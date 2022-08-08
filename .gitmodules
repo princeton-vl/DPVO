@@ -1,0 +1,3 @@
+[submodule "Pangolin"]
+	path = Pangolin
+	url = https://github.com/zachteed/Pangolin.git
