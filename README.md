@@ -1,10 +1,14 @@
 # Deep Patch Visual Odometry
+This repository contains the source code for our paper:
+
+[Deep Patch Visual Odometry](https://arxiv.org/pdf/2208.04726.pdf)<br/>
+Zachary Teed, Lahav Lipson, Jia Deng<br/>
 
 ```
 @article{teed2022deep,
   title={Deep Patch Visual Odometry},
   author={Teed, Zachary and Lipson, Lahav and Deng, Jia},
-  journal={arXiv preprint arXiv:2205.04502},
+  journal={arXiv preprint arXiv:arXiv:2208.04726},
   year={2022}
 }
 ```
