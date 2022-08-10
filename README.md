@@ -8,7 +8,7 @@ Zachary Teed, Lahav Lipson, Jia Deng<br/>
 @article{teed2022deep,
   title={Deep Patch Visual Odometry},
   author={Teed, Zachary and Lipson, Lahav and Deng, Jia},
-  journal={arXiv preprint arXiv:arXiv:2208.04726},
+  journal={arXiv preprint arXiv:2208.04726},
   year={2022}
 }
 ```
