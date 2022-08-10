@@ -141,7 +141,7 @@ def train(args):
             if rank == 0:
                 logger.push(metrics)
 
-            if total_steps % 10000 == 1:
+            if total_steps % 10000 == 0:
                 torch.cuda.empty_cache()
 
                 if rank == 0:
