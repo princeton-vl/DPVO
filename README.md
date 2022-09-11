@@ -15,7 +15,8 @@ Zachary Teed, Lahav Lipson, Jia Deng<br/>
 
 
 ## Setup and Installation
-The code was tested on Ubuntu 20 and Cuda 11.
+The code was tested on Ubuntu 20 and Cuda 11.</br>
+**Update 9/12:** We have [an official Docker](https://github.com/princeton-vl/DPVO_Docker)
 
 Clone the repo
 ```
@@ -123,6 +124,7 @@ python train.py --steps=240000 --lr=0.00008 --name=<your name>
 
 ## Change Log
 * **Aug 08, 2022**: Initial release
+* **Sep 12, 2022**: Add link to docker
 
 
 ## Acknowledgements
