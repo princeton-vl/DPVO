@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 
+TORCH_VERSION = tuple(int(x) for x in torch.__version__.split(".")[:2])
 
 all_times = []
 
@@ -32,7 +33,7 @@ def coords_grid(b, n, h, w, **kwargs):
     """ coordinate grid """
     x = torch.arange(0, w, dtype=torch.float, **kwargs)
     y = torch.arange(0, h, dtype=torch.float, **kwargs)
-    coords = torch.stack(torch.meshgrid(y, x, indexing="ij"))
+    coords = torch.stack(meshgrid(y, x, indexing="ij"))
     return coords[[1,0]].view(1, 1, 2, h, w).repeat(b, n, 1, 1, 1)
 
 def coords_grid_with_index(d, **kwargs):
@@ -42,7 +43,7 @@ def coords_grid_with_index(d, **kwargs):
     x = torch.arange(0, w, dtype=torch.float, **kwargs)
     y = torch.arange(0, h, dtype=torch.float, **kwargs)
 
-    y, x = torch.stack(torch.meshgrid(y, x, indexing="ij"))
+    y, x = torch.stack(meshgrid(y, x, indexing="ij"))
     y = y.view(1, 1, h, w).repeat(b, n, 1, 1)
     x = x.view(1, 1, h, w).repeat(b, n, 1, 1)
 
@@ -73,7 +74,7 @@ def pyramidify(fmap, lvls=[1]):
     return pyramid
 
 def all_pairs_exclusive(n, **kwargs):
-    ii, jj = torch.meshgrid(torch.arange(n, **kwargs), torch.arange(n, **kwargs))
+    ii, jj = meshgrid(torch.arange(n, **kwargs), torch.arange(n, **kwargs))
     k = ii != jj
     return ii[k].reshape(-1), jj[k].reshape(-1)
 
@@ -81,7 +82,10 @@ def set_depth(patches, depth):
     patches[...,2,:,:] = depth[...,None,None]
     return patches
 
-def flatmeshgrid(*args, **kwargs):
-    grid = torch.meshgrid(*args, **kwargs)
-    return (x.reshape(-1) for x in grid)
-
+def meshgrid(x, y, indexing="ij", flat=False):
+    if TORCH_VERSION < (1, 10):
+        # "ij" if default in older torch
+        grid = torch.meshgrid(x, y)
+    else:
+        grid = torch.meshgrid(x, y, indexing)
+    return (x.reshape(-1) for x in grid) if flat else grid

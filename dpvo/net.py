@@ -201,7 +201,7 @@ class VONet(nn.Module):
         d = patches[..., 2, p//2, p//2]
         patches = set_depth(patches, torch.rand_like(d))
 
-        kk, jj = flatmeshgrid(torch.where(ix < 8)[0], torch.arange(0,8, device="cuda"))
+        kk, jj = meshgrid(torch.where(ix < 8)[0], torch.arange(0,8, device="cuda"), flat=True)
         ii = ix[kk]
 
         imap = imap.view(b, -1, DIM)
@@ -222,8 +222,8 @@ class VONet(nn.Module):
             n = ii.max() + 1
             if len(traj) >= 8 and n < images.shape[1]:
                 if not structure_only: Gs.data[:,n] = Gs.data[:,n-1]
-                kk1, jj1 = flatmeshgrid(torch.where(ix  < n)[0], torch.arange(n, n+1, device="cuda"))
-                kk2, jj2 = flatmeshgrid(torch.where(ix == n)[0], torch.arange(0, n+1, device="cuda"))
+                kk1, jj1 = meshgrid(torch.where(ix  < n)[0], torch.arange(n, n+1, device="cuda"), flat=True)
+                kk2, jj2 = meshgrid(torch.where(ix == n)[0], torch.arange(0, n+1, device="cuda"), flat=True)
 
                 ii = torch.cat([ix[kk1], ix[kk2], ii])
                 jj = torch.cat([jj1, jj2, jj])

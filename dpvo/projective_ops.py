@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 
 from .lietorch import SE3, Sim3
+from .utils import meshgrid
 
 MIN_DEPTH = 0.2
 
@@ -9,7 +10,7 @@ def extract_intrinsics(intrinsics):
     return intrinsics[...,None,None,:].unbind(dim=-1)
 
 def coords_grid(ht, wd, **kwargs):
-    y, x = torch.meshgrid(
+    y, x = meshgrid(
         torch.arange(ht).to(**kwargs).float(),
         torch.arange(wd).to(**kwargs).float())
 

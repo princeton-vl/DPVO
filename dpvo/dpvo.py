@@ -296,24 +296,24 @@ class DPVO:
             self.points_[:len(points)] = points[:]
                 
     def __edges_all(self):
-        return flatmeshgrid(
+        return meshgrid(
             torch.arange(0, self.m, device="cuda"),
-            torch.arange(0, self.n, device="cuda"), indexing='ij')
+            torch.arange(0, self.n, device="cuda"), indexing="ij", flat=True)
 
     def __edges_forw(self):
         r=self.cfg.PATCH_LIFETIME
         t0 = self.M * max((self.n - r), 0)
         t1 = self.M * max((self.n - 1), 0)
-        return flatmeshgrid(
+        return meshgrid(
             torch.arange(t0, t1, device="cuda"),
-            torch.arange(self.n-1, self.n, device="cuda"), indexing='ij')
+            torch.arange(self.n-1, self.n, device="cuda"), indexing="ij", flat=True)
 
     def __edges_back(self):
         r=self.cfg.PATCH_LIFETIME
         t0 = self.M * max((self.n - 1), 0)
         t1 = self.M * max((self.n - 0), 0)
-        return flatmeshgrid(torch.arange(t0, t1, device="cuda"),
-            torch.arange(max(self.n-r, 0), self.n, device="cuda"), indexing='ij')
+        return meshgrid(torch.arange(t0, t1, device="cuda"),
+            torch.arange(max(self.n-r, 0), self.n, device="cuda"), indexing="ij", flat=True)
 
     def __call__(self, tstamp, image, intrinsics):
         """ track new frame """
