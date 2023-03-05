@@ -4,7 +4,7 @@ This repository contains the source code for our paper:
 [Deep Patch Visual Odometry](https://arxiv.org/pdf/2208.04726.pdf)<br/>
 Zachary Teed, Lahav Lipson, Jia Deng<br/>
 
-[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/e5wanf71YFs/0.jpg)](https://www.youtube.com/watch?v=e5wanf71YFs)
+[<img src="https://i.imgur.com/6ZQPbR1.png?1" width="600">](https://www.youtube.com/watch?v=e5wanf71YFs)
 
 ```
 @article{teed2022deep,
