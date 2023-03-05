@@ -14,7 +14,7 @@ Zachary Teed, Lahav Lipson, Jia Deng<br/>
   year={2022}
 }
 ```
-##  [<img src="https://i.imgur.com/QCojoJk.png" width="40"> You can run DPVO in Google Colab](https://colab.research.google.com/drive/1CcWemScHyqTN3ZJzYh0IwWfkKyWhB2K8?usp=sharing)
+##  [<img src="https://i.imgur.com/QCojoJk.png" width="40"> You can run DPVO in Google Colab](https://colab.research.google.com/drive/1DRI1aHllMY5JO3oSW7HnytuEmasjokde?usp=sharing)
 
 ## Setup and Installation
 The code was tested on Ubuntu 20 and Cuda 11.</br>
@@ -96,17 +96,27 @@ python demo.py --imagedir=<path to mav0/cam0/data/> --calib=calib/euroc.txt --st
 ```
 
 ## Evaluation
-We provide evaluation scripts for TartanAir, EuRoC, TUM-RGBD and ICL_NUIM. Up to date result logs on these datasets can be found in the `logs` directory.
+We provide evaluation scripts for TartanAir, EuRoC, TUM-RGBD and ICL-NUIM. Up to date result logs on these datasets can be found in the `logs` directory.
 
 ### TartanAir:
-Results on the validation splits and test sets can be obtained with the command; however, only ground truth for the validation split is public.
+Results on the validation split and test set can be obtained with the command:
 ```
-python evaluate_tartan.py --trials=5 --split=validation
+python evaluate_tartan.py --trials=5 --split=validation --plot --save_trajectory
 ```
 
 ### EuRoC:
 ```
-python evaluate_euroc.py --trials=5
+python evaluate_euroc.py --trials=5 --plot --save_trajectory
+```
+
+### TUM-RGBD:
+```
+python evaluate_tum.py --trials=5 --plot --save_trajectory
+```
+
+### ICL-NUIM:
+```
+python evaluate_icl_nuim.py --trials=5 --plot --save_trajectory
 ```
 
 ## Training
