@@ -4,12 +4,15 @@ import glob
 import os.path as osp
 import os
 import torch
+from pathlib import Path
 from multiprocessing import Process, Queue
+from plyfile import PlyElement, PlyData
 
 from dpvo.utils import Timer
 from dpvo.dpvo import DPVO
 from dpvo.config import cfg
 from dpvo.stream import image_stream, video_stream
+from dpvo.plot_utils import plot_trajectory, save_trajectory_tum_format
 
 SKIP = 0
 
@@ -19,7 +22,7 @@ def show_image(image, t=0):
     cv2.waitKey(t)
 
 @torch.no_grad()
-def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False):
+def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False, save_reconstruction=False):
 
     slam = None
     queue = Queue(maxsize=8)
@@ -51,7 +54,14 @@ def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False
         slam.update()
 
     reader.join()
-    print()
+
+    if save_reconstruction:
+        points = slam.points_.cpu().numpy()[:slam.m]
+        colors = slam.colors_.view(-1, 3).cpu().numpy()[:slam.m]
+        points = np.array([(x,y,z,r,g,b) for (x,y,z),(r,g,b) in zip(points, colors)],
+                          dtype=[('x', '<f4'), ('y', '<f4'), ('z', '<f4'),('red', 'u1'), ('green', 'u1'),('blue', 'u1')])
+        el = PlyElement.describe(points, 'vertex',{'some_property': 'f8'},{'some_property': 'u4'})
+        return slam.terminate(), PlyData([el], text=True)
 
     return slam.terminate()
 
@@ -67,6 +77,9 @@ if __name__ == '__main__':
     parser.add_argument('--config', default="config/default.yaml")
     parser.add_argument('--timeit', action='store_true')
     parser.add_argument('--viz', action="store_true")
+    parser.add_argument('--plot', action="store_true")
+    parser.add_argument('--save_reconstruction', action="store_true")
+    parser.add_argument('--save_trajectory', action="store_true")
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
@@ -74,8 +87,20 @@ if __name__ == '__main__':
     print("Running with config...")
     print(cfg)
 
+    pred_traj = run(cfg, args.network, args.imagedir, args.calib, args.stride, args.skip, args.viz, args.timeit, args.save_reconstruction)
+    name = Path(args.imagedir).stem
 
-    run(cfg, args.network, args.imagedir, args.calib, args.stride, args.skip, args.viz, args.timeit)
+    if args.save_reconstruction:
+        pred_traj, ply_data = pred_traj
+        ply_data.write(f"{name}.ply")
+
+    if args.save_trajectory:
+        Path("saved_trajectories").mkdir(exist_ok=True)
+        save_trajectory_tum_format(pred_traj, f"saved_trajectories/{name}.txt")
+
+    if args.plot:
+        Path("trajectory_plots").mkdir(exist_ok=True)
+        plot_trajectory(pred_traj, title=f"DPVO Trajectory Prediction for {name}", filename=f"trajectory_plots/{name}.pdf")
 
 
         

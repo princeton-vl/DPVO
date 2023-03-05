@@ -25,7 +25,6 @@ from evo.core import sync
 import evo.main_ape as main_ape
 from evo.core.metrics import PoseRelation
 
-
 SKIP = 0
 
 def show_image(image, t=0):
@@ -49,7 +48,7 @@ def run(cfg, network, imagedir, calib, stride=1, viz=False):
         image = torch.from_numpy(image).permute(2,0,1).cuda()
         intrinsics = torch.from_numpy(intrinsics).cuda()
 
-        if viz: 
+        if viz:
             show_image(image, 1)
 
         if slam is None:
@@ -77,7 +76,7 @@ if __name__ == '__main__':
     parser.add_argument('--stride', type=int, default=2)
     parser.add_argument('--viz', action="store_true")
     parser.add_argument('--trials', type=int, default=1)
-    parser.add_argument('--eurocdir', default="datasets/EUROC")
+    parser.add_argument('--iclnuim_dir', default="datasets/ICL_NUIM", type=Path)
     parser.add_argument('--plot', action="store_true")
     parser.add_argument('--save_trajectory', action="store_true")
     args = parser.parse_args()
@@ -89,38 +88,39 @@ if __name__ == '__main__':
 
     torch.manual_seed(1234)
 
-    euroc_scenes = [
-        "MH_01_easy",
-        "MH_02_easy",
-        "MH_03_medium",
-        "MH_04_difficult",
-        "MH_05_difficult",
-        "V1_01_easy",
-        "V1_02_medium",
-        "V1_03_difficult",
-        "V2_01_easy",
-        "V2_02_medium",
-        "V2_03_difficult",
+    scenes = [
+        "living_room_traj0_loop",
+        "living_room_traj1_loop",
+        "living_room_traj2_loop",
+        "living_room_traj3_loop",
+        "office_room_traj0_loop",
+        "office_room_traj1_loop",
+        "office_room_traj2_loop",
+        "office_room_traj3_loop",
     ]
 
     results = {}
-    for scene in euroc_scenes:
-        imagedir = os.path.join(args.eurocdir, scene, "mav0/cam0/data")
-        groundtruth = "datasets/euroc_groundtruth/{}.txt".format(scene) 
+    for scene in scenes:
+        imagedir = args.iclnuim_dir / scene
+        if scene.startswith("living"):
+            groundtruth = args.iclnuim_dir / f"TrajectoryGT" / f"livingRoom{scene[-6]}.gt.freiburg"
+        elif scene.startswith("office"):
+            groundtruth = args.iclnuim_dir / f"TrajectoryGT" / f"traj{scene[-6]}.gt.freiburg"
+        traj_ref = file_interface.read_tum_trajectory_file(groundtruth)
 
         scene_results = []
         for i in range(args.trials):
-            traj_est, timestamps = run(cfg, args.network, imagedir, "calib/euroc.txt", args.stride, args.viz)
+            traj_est, timestamps = run(cfg, args.network, imagedir, "calib/icl_nuim.txt", args.stride, args.viz)
 
             images_list = sorted(glob.glob(os.path.join(imagedir, "*.png")))[::args.stride]
-            tstamps = [float(x.split('/')[-1][:-4]) for x in images_list]
+            tstamps = np.arange(1, len(images_list)+1, args.stride, dtype=np.float64)
 
             traj_est = PoseTrajectory3D(
                 positions_xyz=traj_est[:,:3],
                 orientations_quat_wxyz=traj_est[:,3:],
-                timestamps=np.array(tstamps))
+                timestamps=tstamps)
 
-            traj_ref = file_interface.read_tum_trajectory_file(groundtruth)
+            # traj_ref = file_interface.read_tum_trajectory_file(groundtruth)
             traj_ref, traj_est = sync.associate_trajectories(traj_ref, traj_est)
 
             result = main_ape.ape(traj_ref, traj_est, est_name='traj', 
@@ -128,14 +128,14 @@ if __name__ == '__main__':
             ate_score = result.stats["rmse"]
 
             if args.plot:
-                scene_name = '_'.join(scene.split('/')[1:]).title()
+                scene_name = scene.rstrip("_loop").title()
                 Path("trajectory_plots").mkdir(exist_ok=True)
-                plot_trajectory(traj_est, traj_ref, f"Euroc {scene} Trial #{i+1} (ATE: {ate_score:.03f})",
-                                f"trajectory_plots/Euroc_{scene}_Trial{i+1:02d}.pdf", align=True, correct_scale=True)
+                plot_trajectory(traj_est, traj_ref, f"ICL_NUIM {scene_name} Trial #{i+1} (ATE: {ate_score:.03f})",
+                                f"trajectory_plots/ICL_NUIM_{scene_name}_Trial{i+1:02d}.pdf", align=True, correct_scale=True)
 
             if args.save_trajectory:
                 Path("saved_trajectories").mkdir(exist_ok=True)
-                save_trajectory_tum_format(traj_est, f"saved_trajectories/Euroc_{scene}_Trial{i+1:02d}.txt")
+                save_trajectory_tum_format(traj_est, f"saved_trajectories/ICL_NUIM_{scene_name}_Trial{i+1:02d}.txt")
 
             scene_results.append(ate_score)
 
@@ -148,7 +148,3 @@ if __name__ == '__main__':
         xs.append(results[scene])
 
     print("AVG: ", np.mean(xs))
-
-    
-
-    

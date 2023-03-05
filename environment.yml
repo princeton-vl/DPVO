@@ -137,6 +137,7 @@ dependencies:
   - zlib=1.2.12=h7f8727e_2
   - zstd=1.5.2=ha4553b6_0
   - pip:
+    - plyfile
     - argcomplete==2.0.0
     - beautifulsoup4==4.11.1
     - cmake==3.22.4
