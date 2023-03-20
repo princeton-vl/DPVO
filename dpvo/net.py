@@ -121,11 +121,11 @@ class Patchifier(nn.Module):
             y = torch.randint(1, h-1, size=[n, 3*patches_per_image], device="cuda")
 
             coords = torch.stack([x, y], dim=-1).float()
-            g = altcorr.patchify(g, coords, 0).view(-1)
+            g = altcorr.patchify(g[0,:,None], coords, 0).view(n, 3 * patches_per_image)
             
-            ix = torch.argsort(g)
-            x = x[:, ix[-patches_per_image:]]
-            y = y[:, ix[-patches_per_image:]]
+            ix = torch.argsort(g, dim=1)
+            x = torch.gather(x, 1, ix[:, -patches_per_image:])
+            y = torch.gather(y, 1, ix[:, -patches_per_image:])
 
         else:
             x = torch.randint(1, w-1, size=[n, patches_per_image], device="cuda")
