@@ -113,6 +113,7 @@ class Patchifier(nn.Module):
         imap = self.inet(images) / 4.0
 
         b, n, c, h, w = fmap.shape
+        P = self.patch_size
 
         # bias patch selection towards regions with high gradient
         if gradient_bias:
@@ -121,11 +122,11 @@ class Patchifier(nn.Module):
             y = torch.randint(1, h-1, size=[n, 3*patches_per_image], device="cuda")
 
             coords = torch.stack([x, y], dim=-1).float()
-            g = altcorr.patchify(g, coords, 0).view(-1)
+            g = altcorr.patchify(g[0,:,None], coords, 0).view(n, 3 * patches_per_image)
             
-            ix = torch.argsort(g)
-            x = x[:, ix[-patches_per_image:]]
-            y = y[:, ix[-patches_per_image:]]
+            ix = torch.argsort(g, dim=1)
+            x = torch.gather(x, 1, ix[:, -patches_per_image:])
+            y = torch.gather(y, 1, ix[:, -patches_per_image:])
 
         else:
             x = torch.randint(1, w-1, size=[n, patches_per_image], device="cuda")
@@ -133,7 +134,7 @@ class Patchifier(nn.Module):
         
         coords = torch.stack([x, y], dim=-1).float()
         imap = altcorr.patchify(imap[0], coords, 0).view(b, -1, DIM, 1, 1)
-        gmap = altcorr.patchify(fmap[0], coords, 1).view(b, -1, 128, 3, 3)
+        gmap = altcorr.patchify(fmap[0], coords, P//2).view(b, -1, 128, P, P)
 
         if return_color:
             clr = altcorr.patchify(images[0], 4*(coords + 0.5), 0).view(b, -1, 3)
@@ -142,7 +143,7 @@ class Patchifier(nn.Module):
             disps = torch.ones(b, n, h, w, device="cuda")
 
         grid, _ = coords_grid_with_index(disps, device=fmap.device)
-        patches = altcorr.patchify(grid[0], coords, 1).view(b, -1, 3, 3, 3)
+        patches = altcorr.patchify(grid[0], coords, P//2).view(b, -1, 3, P, P)
 
         index = torch.arange(n, device="cuda").view(n, 1)
         index = index.repeat(1, patches_per_image).reshape(-1)

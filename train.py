@@ -85,7 +85,7 @@ def train(args):
             loss = 0.0
             for i, (v, x, y, P1, P2, kl) in enumerate(traj):
                 e = (x - y).norm(dim=-1)
-                e = e.reshape(-1, 9)[(v > 0.5).reshape(-1)].min(dim=-1).values
+                e = e.reshape(-1, net.P**2)[(v > 0.5).reshape(-1)].min(dim=-1).values
 
                 N = P1.shape[1]
                 ii, jj = torch.meshgrid(torch.arange(N), torch.arange(N))
