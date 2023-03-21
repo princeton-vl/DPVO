@@ -74,6 +74,7 @@ if __name__ == '__main__':
     parser.add_argument('--calib', type=str)
     parser.add_argument('--stride', type=int, default=2)
     parser.add_argument('--skip', type=int, default=0)
+    parser.add_argument('--buffer', type=int, default=2048)
     parser.add_argument('--config', default="config/default.yaml")
     parser.add_argument('--timeit', action='store_true')
     parser.add_argument('--viz', action="store_true")
@@ -83,6 +84,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
+    cfg.BUFFER_SIZE = args.buffer
 
     print("Running with config...")
     print(cfg)
@@ -93,6 +95,7 @@ if __name__ == '__main__':
     if args.save_reconstruction:
         pred_traj, ply_data = pred_traj
         ply_data.write(f"{name}.ply")
+        print(f"Saved {name}.ply")
 
     if args.save_trajectory:
         Path("saved_trajectories").mkdir(exist_ok=True)

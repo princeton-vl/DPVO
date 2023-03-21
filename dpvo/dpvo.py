@@ -318,6 +318,9 @@ class DPVO:
     def __call__(self, tstamp, image, intrinsics):
         """ track new frame """
 
+        if (self.n+1) >= self.N:
+            raise Exception(f'The buffer size is too small. You can increase it using "--buffer {self.N*2}"')
+
         if self.viewer is not None:
             self.viewer.update_image(image)
 
