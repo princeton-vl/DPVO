@@ -7,11 +7,11 @@ Zachary Teed, Lahav Lipson, Jia Deng<br/>
 [<img src="https://i.imgur.com/6ZQPbR1.png?1" width="600">](https://www.youtube.com/watch?v=e5wanf71YFs)
 
 ```
-@article{teed2022deep,
+@article{teed2023deep,
   title={Deep Patch Visual Odometry},
   author={Teed, Zachary and Lipson, Lahav and Deng, Jia},
-  journal={arXiv preprint arXiv:2208.04726},
-  year={2022}
+  journal={Advances in Neural Information Processing Systems},
+  year={2023}
 }
 ```
 ##  [<img src="https://i.imgur.com/QCojoJk.png" width="40"> You can run DPVO in Google Colab](https://colab.research.google.com/drive/1DRI1aHllMY5JO3oSW7HnytuEmasjokde?usp=sharing)
