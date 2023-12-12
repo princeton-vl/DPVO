@@ -3,6 +3,7 @@ import os.path as osp
 
 import torch
 from ..lietorch import SE3
+from ..utils import meshgrid
 
 from scipy.spatial.transform import Rotation
 
@@ -111,7 +112,7 @@ def compute_distance_matrix_flow(poses, disps, intrinsics):
 
     N = poses.shape[1]
     
-    ii, jj = torch.meshgrid(torch.arange(N), torch.arange(N))
+    ii, jj = meshgrid(torch.arange(N), torch.arange(N))
     ii = ii.reshape(-1).cuda()
     jj = jj.reshape(-1).cuda()
 
@@ -151,7 +152,7 @@ def compute_distance_matrix_flow2(poses, disps, intrinsics, beta=0.4):
 
     N = poses.shape[1]
     
-    ii, jj = torch.meshgrid(torch.arange(N), torch.arange(N))
+    ii, jj = meshgrid(torch.arange(N), torch.arange(N))
     ii = ii.reshape(-1)
     jj = jj.reshape(-1)
 

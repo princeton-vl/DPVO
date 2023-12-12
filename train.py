@@ -17,6 +17,8 @@ import torch.nn.functional as F
 from dpvo.net import VONet
 from evaluate_tartan import evaluate as validate
 
+from dpvo.utils import meshgrid
+
 
 def show_image(image):
     image = image.permute(1, 2, 0).cpu().numpy()
@@ -88,7 +90,7 @@ def train(args):
                 e = e.reshape(-1, net.P**2)[(v > 0.5).reshape(-1)].min(dim=-1).values
 
                 N = P1.shape[1]
-                ii, jj = torch.meshgrid(torch.arange(N), torch.arange(N))
+                ii, jj = meshgrid(torch.arange(N), torch.arange(N))
                 ii = ii.reshape(-1).cuda()
                 jj = jj.reshape(-1).cuda()
 
