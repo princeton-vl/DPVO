@@ -11,8 +11,11 @@ from .net import VONet
 from .utils import *
 from . import projective_ops as pops
 
-autocast = torch.cuda.amp.autocast
-Id = SE3.Identity(1, device="cuda")
+try:
+    autocast = torch.cuda.amp.autocast
+    Id = SE3.Identity(1, device="cuda")
+except:
+    print("Failed to initialize DPVO! (Ignore on headnode)")
 
 
 class DPVO:
@@ -166,7 +169,7 @@ class DPVO:
         poses = [self.get_pose(t) for t in range(self.counter)]
         poses = lietorch.stack(poses, dim=0)
         poses = poses.inv().data.cpu().numpy()
-        tstamps = np.array(self.tlist, dtype=np.float)
+        tstamps = np.array(self.tlist, dtype=np.float32)
 
         if self.viewer is not None:
             self.viewer.join()
