@@ -20,7 +20,7 @@ def show_image(image, t=0):
     cv2.waitKey(t)
 
 @torch.no_grad()
-def run(cfg, network, imagedir, calib, stride=1, skip=0, end=-1, viz=False, timeit=False, save_reconstruction=False):
+def run(cfg, network, imagedir, calib, stride=1, skip=0, end=-1, assumed_fov_degrees: float = 90.0, viz=False, timeit=False, save_reconstruction=False):
 
     slam = None
     queue = Queue(maxsize=8)
@@ -28,7 +28,7 @@ def run(cfg, network, imagedir, calib, stride=1, skip=0, end=-1, viz=False, time
     if os.path.isdir(imagedir):
         reader = Process(target=image_stream, args=(queue, imagedir, calib, stride, skip, end))
     else:
-        reader = Process(target=video_stream, args=(queue, imagedir, calib, stride, skip, end))
+        reader = Process(target=video_stream, args=(queue, imagedir, calib, stride, skip, end, assumed_fov_degrees))
 
     reader.start()
 
@@ -73,6 +73,7 @@ if __name__ == '__main__':
     parser.add_argument('--stride', type=int, default=1)
     parser.add_argument('--skip', type=int, default=0)
     parser.add_argument('--end', type=int, default=-1)
+    parser.add_argument('--assumed_fov_degrees', type=float, default=90.0)
     parser.add_argument('--buffer', type=int, default=2048)
     parser.add_argument('--config', default="config/default.yaml")
     parser.add_argument('--timeit', action='store_true')
@@ -80,6 +81,7 @@ if __name__ == '__main__':
     parser.add_argument('--plot', action="store_true")
     parser.add_argument('--save_reconstruction', type=str, default="")
     parser.add_argument('--save_trajectory', type=str, default="")
+    parser.add_argument('--name', type=str, default="")
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
@@ -88,14 +90,17 @@ if __name__ == '__main__':
     # print("Running with config...")
     # print(cfg)
 
-    pred_traj = run(cfg, args.network, args.imagedir, args.calib, args.stride, args.skip, args.end, args.viz, args.timeit, args.save_reconstruction)
-    name = Path(args.imagedir).stem
+    pred_traj = run(cfg, args.network, args.imagedir, args.calib, args.stride, args.skip, args.end, args.assumed_fov_degrees, args.viz, args.timeit, args.save_reconstruction)
+    if not args.name:
+        name = Path(args.imagedir).stem
+    else:
+        name = args.name
 
     if args.save_reconstruction:
         pred_traj, ply_data = pred_traj
         path = os.path.join(args.save_reconstruction, f"{name}.ply")
         ply_data.write(path)
-        print(f"Saved {path}")
+        # print(f"Saved {path}")
 
     if args.save_trajectory:
         os.makedirs(args.save_trajectory, exist_ok=True)

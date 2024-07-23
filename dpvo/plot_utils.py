@@ -41,7 +41,7 @@ def plot_trajectory(pred_traj, gt_traj=None, title="", filename="", align=True, 
     plot_collection.add_figure("traj (error)", fig)
     plot_collection.export(filename, confirm_overwrite=False)
     plt.close(fig=fig)
-    print(f"Saved {filename}")
+    # print(f"Saved {filename}")
 
 def save_trajectory_tum_format(traj, filename):
     traj = make_traj(traj)
@@ -49,4 +49,4 @@ def save_trajectory_tum_format(traj, filename):
     with Path(filename).open('w') as f:
         for i in range(traj.num_poses):
             f.write(f"{traj.timestamps[i]} {tostr(traj.positions_xyz[i])} {tostr(traj.orientations_quat_wxyz[i][[1,2,3,0]])}\n")
-    print(f"Saved {filename}")
+    # print(f"Saved {filename}")

@@ -1,9 +1,11 @@
 import os
 import cv2
 import numpy as np
-from multiprocessing import Process, Queue
+from multiprocessing import Queue
 from pathlib import Path
 from itertools import chain
+import decord
+
 
 def image_stream(queue, imagedir, calib, stride, skip=0):
     """ image generator """
@@ -41,12 +43,13 @@ def image_stream(queue, imagedir, calib, stride, skip=0):
 
 
 def video_stream(
-    queue,
+    queue: Queue,
     imagedir: str,
     calib: str | None = None,
     stride: int = 1,
     skip: int = 0,
     end: int = -1,
+    assumed_fov_degrees: float = 90.0,
 ):
     """ video generator """
 
@@ -60,26 +63,29 @@ def video_stream(
         end += total_frames + 1
 
     t = 0
-    c = 0
+    c = 0  # frame count
 
     for _ in range(skip):
-        c += 1
         ret, image = cap.read()
+        c += 1
 
     while True:
-        for _ in range(stride):
-            c += 1
+        if c >= end:
+            break
+        for _ in range(stride - 1):
             ret, image = cap.read()
+            c += 1
             if not ret:
                 break
 
-        if not ret or c >= end:  # TODO: is >= or >?
+        ret, image = cap.read()
+        if not ret:
             break
-        
+
         if calib is None:
             h, w = image.shape[:2]
-            # assume 90 degree fov and 0 distortion TODO: pass in with arg
-            calib = np.array([w / 2, w / 2, w / 2, h / 2, 0, 0, 0, 0])
+            f = w / (2 * np.tan(np.deg2rad(assumed_fov_degrees) / 2))
+            calib = np.array([f, f, w / 2, h / 2, 0, 0, 0, 0])
         fx, fy, cx, cy = calib[:4]
 
         if K is None:
@@ -100,6 +106,7 @@ def video_stream(
         queue.put((t, image, intrinsics))
 
         t += 1
+        c += 1
 
     queue.put((-1, image, intrinsics))
     cap.release()
