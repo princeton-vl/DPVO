@@ -1,3 +1,6 @@
 [submodule "Pangolin"]
 	path = Pangolin
 	url = https://github.com/zachteed/Pangolin.git
+[submodule "DBoW2"]
+	path = DBoW2
+	url = https://github.com/princeton-vl/DBoW2.git

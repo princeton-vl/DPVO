@@ -1,29 +1,22 @@
-import cv2
-import numpy as np
 import glob
-import os.path as osp
 import os
+from multiprocessing import Process, Queue
 from pathlib import Path
 
-import datetime
-from tqdm import tqdm
-
-from dpvo.utils import Timer
-from dpvo.dpvo import DPVO
-from dpvo.stream import image_stream
-from dpvo.config import cfg
-from dpvo.plot_utils import plot_trajectory, save_trajectory_tum_format
-
+import cv2
+import evo.main_ape as main_ape
+import numpy as np
 import torch
-from multiprocessing import Process, Queue
-
-### evo evaluation library ###
-import evo
+from evo.core import sync
+from evo.core.metrics import PoseRelation
 from evo.core.trajectory import PoseTrajectory3D
 from evo.tools import file_interface
-from evo.core import sync
-import evo.main_ape as main_ape
-from evo.core.metrics import PoseRelation
+
+from dpvo.config import cfg
+from dpvo.dpvo import DPVO
+from dpvo.plot_utils import plot_trajectory
+from dpvo.stream import image_stream
+from dpvo.utils import Timer
 
 SKIP = 0
 
@@ -33,7 +26,7 @@ def show_image(image, t=0):
     cv2.waitKey(t)
 
 @torch.no_grad()
-def run(cfg, network, imagedir, calib, stride=1, viz=False):
+def run(cfg, network, imagedir, calib, stride=1, viz=False, show_img=False):
 
     slam = None
 
@@ -48,20 +41,14 @@ def run(cfg, network, imagedir, calib, stride=1, viz=False):
         image = torch.from_numpy(image).permute(2,0,1).cuda()
         intrinsics = torch.from_numpy(intrinsics).cuda()
 
-        if viz:
+        if show_img:
             show_image(image, 1)
 
         if slam is None:
             slam = DPVO(cfg, network, ht=image.shape[1], wd=image.shape[2], viz=viz)
 
-        image = image.cuda()
-        intrinsics = intrinsics.cuda()
-
         with Timer("SLAM", enabled=False):
             slam(t, image, intrinsics)
-
-    for _ in range(12):
-        slam.update()
 
     reader.join()
 
@@ -75,13 +62,18 @@ if __name__ == '__main__':
     parser.add_argument('--config', default="config/default.yaml")
     parser.add_argument('--stride', type=int, default=2)
     parser.add_argument('--viz', action="store_true")
+    parser.add_argument('--show_img', action="store_true")
     parser.add_argument('--trials', type=int, default=1)
     parser.add_argument('--iclnuim_dir', default="datasets/ICL_NUIM", type=Path)
+    parser.add_argument('--backend_thresh', type=float, default=64.0)
     parser.add_argument('--plot', action="store_true")
+    parser.add_argument('--opts', nargs='+', default=[])
     parser.add_argument('--save_trajectory', action="store_true")
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
+    cfg.BACKEND_THRESH = args.backend_thresh
+    cfg.merge_from_list(args.opts)
 
     print("\nRunning with config...")
     print(cfg, "\n")
@@ -110,17 +102,16 @@ if __name__ == '__main__':
 
         scene_results = []
         for i in range(args.trials):
-            traj_est, timestamps = run(cfg, args.network, imagedir, "calib/icl_nuim.txt", args.stride, args.viz)
+            traj_est, timestamps = run(cfg, args.network, imagedir, "calib/icl_nuim.txt", args.stride, args.viz, args.show_img)
 
             images_list = sorted(glob.glob(os.path.join(imagedir, "*.png")))[::args.stride]
             tstamps = np.arange(1, len(images_list)+1, args.stride, dtype=np.float64)
 
             traj_est = PoseTrajectory3D(
                 positions_xyz=traj_est[:,:3],
-                orientations_quat_wxyz=traj_est[:,3:],
+                orientations_quat_wxyz=traj_est[:, [6, 3, 4, 5]],
                 timestamps=tstamps)
 
-            # traj_ref = file_interface.read_tum_trajectory_file(groundtruth)
             traj_ref, traj_est = sync.associate_trajectories(traj_ref, traj_est)
 
             result = main_ape.ape(traj_ref, traj_est, est_name='traj', 
@@ -135,7 +126,7 @@ if __name__ == '__main__':
 
             if args.save_trajectory:
                 Path("saved_trajectories").mkdir(exist_ok=True)
-                save_trajectory_tum_format(traj_est, f"saved_trajectories/ICL_NUIM_{scene_name}_Trial{i+1:02d}.txt")
+                file_interface.write_tum_trajectory_file(f"saved_trajectories/ICL_NUIM_{scene_name}_Trial{i+1:02d}.txt", traj_est)
 
             scene_results.append(ate_score)
 

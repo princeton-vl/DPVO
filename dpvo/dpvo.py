@@ -1,29 +1,31 @@
-import torch
 import numpy as np
+import torch
+import torch.multiprocessing as mp
 import torch.nn.functional as F
 
-from . import fastba
-from . import altcorr
-from . import lietorch
-from .lietorch import SE3
-
-from .net import VONet
-from .utils import *
+from . import altcorr, fastba, lietorch
 from . import projective_ops as pops
+from .lietorch import SE3
+from .net import VONet
+from .patchgraph import PatchGraph
+from .utils import *
+
+mp.set_start_method('spawn', True)
+
 
 autocast = torch.cuda.amp.autocast
 Id = SE3.Identity(1, device="cuda")
 
 
 class DPVO:
+
     def __init__(self, cfg, network, ht=480, wd=640, viz=False):
         self.cfg = cfg
         self.load_weights(network)
         self.is_initialized = False
         self.enable_timing = False
-        
-        self.n = 0      # number of frames
-        self.m = 0      # number of patches
+        torch.set_num_threads(2)
+
         self.M = self.cfg.PATCHES_PER_FRAME
         self.N = self.cfg.BUFFER_SIZE
 
@@ -37,33 +39,35 @@ class DPVO:
         self.tlist = []
         self.counter = 0
 
+        # keep track of global-BA calls
+        self.ran_global_ba = np.zeros(100000, dtype=bool)
+
+        ht = ht // RES
+        wd = wd // RES
+
         # dummy image for visualization
         self.image_ = torch.zeros(self.ht, self.wd, 3, dtype=torch.uint8, device="cpu")
 
-        self.tstamps_ = torch.zeros(self.N, dtype=torch.long, device="cuda")
-        self.poses_ = torch.zeros(self.N, 7, dtype=torch.float, device="cuda")
-        self.patches_ = torch.zeros(self.N, self.M, 3, self.P, self.P, dtype=torch.float, device="cuda")
-        self.intrinsics_ = torch.zeros(self.N, 4, dtype=torch.float, device="cuda")
-
-        self.points_ = torch.zeros(self.N * self.M, 3, dtype=torch.float, device="cuda")
-        self.colors_ = torch.zeros(self.N, self.M, 3, dtype=torch.uint8, device="cuda")
-
-        self.index_ = torch.zeros(self.N, self.M, dtype=torch.long, device="cuda")
-        self.index_map_ = torch.zeros(self.N, dtype=torch.long, device="cuda")
-
         ### network attributes ###
-        self.mem = 32
-
         if self.cfg.MIXED_PRECISION:
             self.kwargs = kwargs = {"device": "cuda", "dtype": torch.half}
         else:
             self.kwargs = kwargs = {"device": "cuda", "dtype": torch.float}
-        
-        self.imap_ = torch.zeros(self.mem, self.M, DIM, **kwargs)
-        self.gmap_ = torch.zeros(self.mem, self.M, 128, self.P, self.P, **kwargs)
 
-        ht = ht // RES
-        wd = wd // RES
+        ### frame memory size ###
+        self.pmem = self.mem = 36 # 32 was too small given default settings
+        if self.cfg.LOOP_CLOSURE:
+            self.last_global_ba = -1000 # keep track of time since last global opt
+            self.pmem = self.cfg.MAX_EDGE_AGE # patch memory
+
+        self.imap_ = torch.zeros(self.pmem, self.M, DIM, **kwargs)
+        self.gmap_ = torch.zeros(self.pmem, self.M, 128, self.P, self.P, **kwargs)
+
+        self.pg = PatchGraph(self.cfg, self.P, self.DIM, self.pmem, **kwargs)
+
+        # classic backend
+        if self.cfg.CLASSIC_LOOP_CLOSURE:
+            self.load_long_term_loop_closure()
 
         self.fmap1_ = torch.zeros(1, self.mem, 128, ht // 1, wd // 1, **kwargs)
         self.fmap2_ = torch.zeros(1, self.mem, 128, ht // 4, wd // 4, **kwargs)
@@ -71,20 +75,17 @@ class DPVO:
         # feature pyramid
         self.pyramid = (self.fmap1_, self.fmap2_)
 
-        self.net = torch.zeros(1, 0, DIM, **kwargs)
-        self.ii = torch.as_tensor([], dtype=torch.long, device="cuda")
-        self.jj = torch.as_tensor([], dtype=torch.long, device="cuda")
-        self.kk = torch.as_tensor([], dtype=torch.long, device="cuda")
-        
-        # initialize poses to identity matrix
-        self.poses_[:,6] = 1.0
-
-        # store relative poses for removed frames
-        self.delta = {}
-
         self.viewer = None
         if viz:
             self.start_viewer()
+
+    def load_long_term_loop_closure(self):
+        try:
+            from .loop_closure.long_term import LongTermLoopClosure
+            self.long_term_lc = LongTermLoopClosure(self.cfg, self.pg)
+        except ModuleNotFoundError as e:
+            self.cfg.CLASSIC_LOOP_CLOSURE = False
+            print(f"WARNING: {e}")
 
     def load_weights(self, network):
         # load network from checkpoint file
@@ -110,10 +111,6 @@ class DPVO:
         self.network.cuda()
         self.network.eval()
 
-        # if self.cfg.MIXED_PRECISION:
-        #     self.network.half()
-
-
     def start_viewer(self):
         from dpviewer import Viewer
 
@@ -121,62 +118,89 @@ class DPVO:
 
         self.viewer = Viewer(
             self.image_,
-            self.poses_,
-            self.points_,
-            self.colors_,
+            self.pg.poses_,
+            self.pg.points_,
+            self.pg.colors_,
             intrinsics_)
 
     @property
     def poses(self):
-        return self.poses_.view(1, self.N, 7)
+        return self.pg.poses_.view(1, self.N, 7)
 
     @property
     def patches(self):
-        return self.patches_.view(1, self.N*self.M, 3, 3, 3)
+        return self.pg.patches_.view(1, self.N*self.M, 3, 3, 3)
 
     @property
     def intrinsics(self):
-        return self.intrinsics_.view(1, self.N, 4)
+        return self.pg.intrinsics_.view(1, self.N, 4)
 
     @property
     def ix(self):
-        return self.index_.view(-1)
+        return self.pg.index_.view(-1)
 
     @property
     def imap(self):
-        return self.imap_.view(1, self.mem * self.M, self.DIM)
+        return self.imap_.view(1, self.pmem * self.M, self.DIM)
 
     @property
     def gmap(self):
-        return self.gmap_.view(1, self.mem * self.M, 128, 3, 3)
+        return self.gmap_.view(1, self.pmem * self.M, 128, 3, 3)
+
+    @property
+    def n(self):
+        return self.pg.n
+
+    @n.setter
+    def n(self, val):
+        self.pg.n = val
+
+    @property
+    def m(self):
+        return self.pg.m
+
+    @m.setter
+    def m(self, val):
+        self.pg.m = val
 
     def get_pose(self, t):
         if t in self.traj:
             return SE3(self.traj[t])
 
-        t0, dP = self.delta[t]
+        t0, dP = self.pg.delta[t]
         return dP * self.get_pose(t0)
 
     def terminate(self):
+
+        if self.cfg.CLASSIC_LOOP_CLOSURE:
+            self.long_term_lc.terminate(self.n)
+
+        if self.cfg.LOOP_CLOSURE:
+            self.append_factors(*self.pg.edges_loop())
+
+        for _ in range(12):
+            self.ran_global_ba[self.n] = False
+            self.update()
+
         """ interpolate missing poses """
         self.traj = {}
         for i in range(self.n):
-            self.traj[self.tstamps_[i].item()] = self.poses_[i]
+            self.traj[self.pg.tstamps_[i]] = self.pg.poses_[i]
 
         poses = [self.get_pose(t) for t in range(self.counter)]
         poses = lietorch.stack(poses, dim=0)
         poses = poses.inv().data.cpu().numpy()
-        tstamps = np.array(self.tlist, dtype=np.float)
-
+        tstamps = np.array(self.tlist, dtype=np.float64)
         if self.viewer is not None:
             self.viewer.join()
 
+        # Poses: x y z qx qy qz qw
         return poses, tstamps
 
     def corr(self, coords, indicies=None):
         """ local correlation volume """
-        ii, jj = indicies if indicies is not None else (self.kk, self.jj)
-        ii1 = ii % (self.M * self.mem)
+        ii, jj = indicies if indicies is not None else (self.pg.kk, self.pg.jj)
+        ii1 = ii % (self.M * self.pmem)
         jj1 = jj % (self.mem)
         corr1 = altcorr.corr(self.gmap, self.pyramid[0], coords / 1, ii1, jj1, 3)
         corr2 = altcorr.corr(self.gmap, self.pyramid[1], coords / 4, ii1, jj1, 3)
@@ -184,23 +208,34 @@ class DPVO:
 
     def reproject(self, indicies=None):
         """ reproject patch k from i -> j """
-        (ii, jj, kk) = indicies if indicies is not None else (self.ii, self.jj, self.kk)
+        (ii, jj, kk) = indicies if indicies is not None else (self.pg.ii, self.pg.jj, self.pg.kk)
         coords = pops.transform(SE3(self.poses), self.patches, self.intrinsics, ii, jj, kk)
         return coords.permute(0, 1, 4, 2, 3).contiguous()
 
     def append_factors(self, ii, jj):
-        self.jj = torch.cat([self.jj, jj])
-        self.kk = torch.cat([self.kk, ii])
-        self.ii = torch.cat([self.ii, self.ix[ii]])
+        self.pg.jj = torch.cat([self.pg.jj, jj])
+        self.pg.kk = torch.cat([self.pg.kk, ii])
+        self.pg.ii = torch.cat([self.pg.ii, self.ix[ii]])
 
         net = torch.zeros(1, len(ii), self.DIM, **self.kwargs)
-        self.net = torch.cat([self.net, net], dim=1)
+        self.pg.net = torch.cat([self.pg.net, net], dim=1)
 
-    def remove_factors(self, m):
-        self.ii = self.ii[~m]
-        self.jj = self.jj[~m]
-        self.kk = self.kk[~m]
-        self.net = self.net[:,~m]
+    def remove_factors(self, m, store: bool):
+        assert self.pg.ii.numel() == self.pg.weight.shape[1]
+        if store:
+            self.pg.ii_inac = torch.cat((self.pg.ii_inac, self.pg.ii[m]))
+            self.pg.jj_inac = torch.cat((self.pg.jj_inac, self.pg.jj[m]))
+            self.pg.kk_inac = torch.cat((self.pg.kk_inac, self.pg.kk[m]))
+            self.pg.weight_inac = torch.cat((self.pg.weight_inac, self.pg.weight[:,m]), dim=1)
+            self.pg.target_inac = torch.cat((self.pg.target_inac, self.pg.target[:,m]), dim=1)
+        self.pg.weight = self.pg.weight[:,~m]
+        self.pg.target = self.pg.target[:,~m]
+
+        self.pg.ii = self.pg.ii[~m]
+        self.pg.jj = self.pg.jj[~m]
+        self.pg.kk = self.pg.kk[~m]
+        self.pg.net = self.pg.net[:,~m]
+        assert self.pg.ii.numel() == self.pg.weight.shape[1]
 
     def motion_probe(self):
         """ kinda hacky way to ensure enough motion for initialization """
@@ -213,19 +248,19 @@ class DPVO:
 
         with autocast(enabled=self.cfg.MIXED_PRECISION):
             corr = self.corr(coords, indicies=(kk, jj))
-            ctx = self.imap[:,kk % (self.M * self.mem)]
+            ctx = self.imap[:,kk % (self.M * self.pmem)]
             net, (delta, weight, _) = \
                 self.network.update(net, ctx, corr, None, ii, jj, kk)
 
         return torch.quantile(delta.norm(dim=-1).float(), 0.5)
 
     def motionmag(self, i, j):
-        k = (self.ii == i) & (self.jj == j)
-        ii = self.ii[k]
-        jj = self.jj[k]
-        kk = self.kk[k]
+        k = (self.pg.ii == i) & (self.pg.jj == j)
+        ii = self.pg.ii[k]
+        jj = self.pg.jj[k]
+        kk = self.pg.kk[k]
 
-        flow = pops.flow_mag(SE3(self.poses), self.patches, self.intrinsics, ii, jj, kk, beta=0.5)
+        flow, _ = pops.flow_mag(SE3(self.poses), self.patches, self.intrinsics, ii, jj, kk, beta=0.5)
         return flow.mean().item()
 
     def keyframe(self):
@@ -236,36 +271,59 @@ class DPVO:
  
         if m / 2 < self.cfg.KEYFRAME_THRESH:
             k = self.n - self.cfg.KEYFRAME_INDEX
-            t0 = self.tstamps_[k-1].item()
-            t1 = self.tstamps_[k].item()
+            t0 = self.pg.tstamps_[k-1]
+            t1 = self.pg.tstamps_[k]
 
-            dP = SE3(self.poses_[k]) * SE3(self.poses_[k-1]).inv()
-            self.delta[t1] = (t0, dP)
+            dP = SE3(self.pg.poses_[k]) * SE3(self.pg.poses_[k-1]).inv()
+            self.pg.delta[t1] = (t0, dP)
 
-            to_remove = (self.ii == k) | (self.jj == k)
-            self.remove_factors(to_remove)
+            to_remove = (self.pg.ii == k) | (self.pg.jj == k)
+            self.remove_factors(to_remove, store=False)
 
-            self.kk[self.ii > k] -= self.M
-            self.ii[self.ii > k] -= 1
-            self.jj[self.jj > k] -= 1
+            self.pg.kk[self.pg.ii > k] -= self.M
+            self.pg.ii[self.pg.ii > k] -= 1
+            self.pg.jj[self.pg.jj > k] -= 1
 
             for i in range(k, self.n-1):
-                self.tstamps_[i] = self.tstamps_[i+1]
-                self.colors_[i] = self.colors_[i+1]
-                self.poses_[i] = self.poses_[i+1]
-                self.patches_[i] = self.patches_[i+1]
-                self.intrinsics_[i] = self.intrinsics_[i+1]
+                self.pg.tstamps_[i] = self.pg.tstamps_[i+1]
+                self.pg.colors_[i] = self.pg.colors_[i+1]
+                self.pg.poses_[i] = self.pg.poses_[i+1]
+                self.pg.patches_[i] = self.pg.patches_[i+1]
+                self.pg.intrinsics_[i] = self.pg.intrinsics_[i+1]
 
-                self.imap_[i%self.mem] = self.imap_[(i+1) % self.mem]
-                self.gmap_[i%self.mem] = self.gmap_[(i+1) % self.mem]
+                self.imap_[i % self.pmem] = self.imap_[(i+1) % self.pmem]
+                self.gmap_[i % self.pmem] = self.gmap_[(i+1) % self.pmem]
                 self.fmap1_[0,i%self.mem] = self.fmap1_[0,(i+1)%self.mem]
                 self.fmap2_[0,i%self.mem] = self.fmap2_[0,(i+1)%self.mem]
 
             self.n -= 1
             self.m-= self.M
 
-        to_remove = self.ix[self.kk] < self.n - self.cfg.REMOVAL_WINDOW
-        self.remove_factors(to_remove)
+            if self.cfg.CLASSIC_LOOP_CLOSURE:
+                self.long_term_lc.keyframe(k)
+
+        to_remove = self.ix[self.pg.kk] < self.n - self.cfg.REMOVAL_WINDOW # Remove edges falling outside the optimization window
+        if self.cfg.LOOP_CLOSURE:
+            # ...unless they are being used for loop closure
+            lc_edges = ((self.pg.jj - self.pg.ii) > 30) & (self.pg.jj > (self.n - self.cfg.OPTIMIZATION_WINDOW))
+            to_remove = to_remove & ~lc_edges
+        self.remove_factors(to_remove, store=True)
+
+    def __run_global_BA(self):
+        """ Global bundle adjustment
+         Includes both active and inactive edges """
+        full_target = torch.cat((self.pg.target_inac, self.pg.target), dim=1)
+        full_weight = torch.cat((self.pg.weight_inac, self.pg.weight), dim=1)
+        full_ii = torch.cat((self.pg.ii_inac, self.pg.ii))
+        full_jj = torch.cat((self.pg.jj_inac, self.pg.jj))
+        full_kk = torch.cat((self.pg.kk_inac, self.pg.kk))
+
+        self.pg.normalize()
+        lmbda = torch.as_tensor([1e-4], device="cuda")
+        t0 = self.pg.ii.min().item()
+        fastba.BA(self.poses, self.patches, self.intrinsics,
+            full_target, full_weight, lmbda, full_ii, full_jj, full_kk, t0, self.n, M=self.M, iterations=2, eff_impl=True)
+        self.ran_global_ba[self.n] = True
 
     def update(self):
         with Timer("other", enabled=self.enable_timing):
@@ -273,32 +331,33 @@ class DPVO:
 
             with autocast(enabled=True):
                 corr = self.corr(coords)
-                ctx = self.imap[:,self.kk % (self.M * self.mem)]
-                self.net, (delta, weight, _) = \
-                    self.network.update(self.net, ctx, corr, None, self.ii, self.jj, self.kk)
+                ctx = self.imap[:, self.pg.kk % (self.M * self.pmem)]
+                self.pg.net, (delta, weight, _) = \
+                    self.network.update(self.pg.net, ctx, corr, None, self.pg.ii, self.pg.jj, self.pg.kk)
 
             lmbda = torch.as_tensor([1e-4], device="cuda")
             weight = weight.float()
             target = coords[...,self.P//2,self.P//2] + delta.float()
 
-        with Timer("BA", enabled=self.enable_timing):
-            t0 = self.n - self.cfg.OPTIMIZATION_WINDOW if self.is_initialized else 1
-            t0 = max(t0, 1)
+        self.pg.target = target
+        self.pg.weight = weight
 
+        with Timer("BA", enabled=self.enable_timing):
             try:
-                fastba.BA(self.poses, self.patches, self.intrinsics, 
-                    target, weight, lmbda, self.ii, self.jj, self.kk, t0, self.n, 2)
+                # run global bundle adjustment if there exist long-range edges
+                if (self.pg.ii < self.n - self.cfg.REMOVAL_WINDOW - 1).any() and not self.ran_global_ba[self.n]:
+                    self.__run_global_BA()
+                else:
+                    t0 = self.n - self.cfg.OPTIMIZATION_WINDOW if self.is_initialized else 1
+                    t0 = max(t0, 1)
+                    fastba.BA(self.poses, self.patches, self.intrinsics, 
+                        target, weight, lmbda, self.pg.ii, self.pg.jj, self.pg.kk, t0, self.n, M=self.M, iterations=2, eff_impl=False)
             except:
                 print("Warning BA failed...")
-            
+
             points = pops.point_cloud(SE3(self.poses), self.patches[:, :self.m], self.intrinsics, self.ix[:self.m])
             points = (points[...,1,1,:3] / points[...,1,1,3:]).reshape(-1, 3)
-            self.points_[:len(points)] = points[:]
-                
-    def __edges_all(self):
-        return flatmeshgrid(
-            torch.arange(0, self.m, device="cuda"),
-            torch.arange(0, self.n, device="cuda"), indexing='ij')
+            self.pg.points_[:len(points)] = points[:]
 
     def __edges_forw(self):
         r=self.cfg.PATCH_LIFETIME
@@ -318,11 +377,14 @@ class DPVO:
     def __call__(self, tstamp, image, intrinsics):
         """ track new frame """
 
+        if self.cfg.CLASSIC_LOOP_CLOSURE:
+            self.long_term_lc(image, self.n)
+
         if (self.n+1) >= self.N:
-            raise Exception(f'The buffer size is too small. You can increase it using "--buffer {self.N*2}"')
+            raise Exception(f'The buffer size is too small. You can increase it using "--opts BUFFER_SIZE={self.N*2}"')
 
         if self.viewer is not None:
-            self.viewer.update_image(image)
+            self.viewer.update_image(image.contiguous())
 
         image = 2 * (image[None,None] / 255.0) - 0.5
         
@@ -330,73 +392,82 @@ class DPVO:
             fmap, gmap, imap, patches, _, clr = \
                 self.network.patchify(image,
                     patches_per_image=self.cfg.PATCHES_PER_FRAME, 
-                    gradient_bias=self.cfg.GRADIENT_BIAS, 
+                    centroid_sel_strat=self.cfg.CENTROID_SEL_STRAT, 
                     return_color=True)
 
         ### update state attributes ###
         self.tlist.append(tstamp)
-        self.tstamps_[self.n] = self.counter
-        self.intrinsics_[self.n] = intrinsics / self.RES
+        self.pg.tstamps_[self.n] = self.counter
+        self.pg.intrinsics_[self.n] = intrinsics / self.RES
 
         # color info for visualization
         clr = (clr[0,:,[2,1,0]] + 0.5) * (255.0 / 2)
-        self.colors_[self.n] = clr.to(torch.uint8)
+        self.pg.colors_[self.n] = clr.to(torch.uint8)
 
-        self.index_[self.n + 1] = self.n + 1
-        self.index_map_[self.n + 1] = self.m + self.M
+        self.pg.index_[self.n + 1] = self.n + 1
+        self.pg.index_map_[self.n + 1] = self.m + self.M
 
         if self.n > 1:
             if self.cfg.MOTION_MODEL == 'DAMPED_LINEAR':
-                P1 = SE3(self.poses_[self.n-1])
-                P2 = SE3(self.poses_[self.n-2])
-                
-                xi = self.cfg.MOTION_DAMPING * (P1 * P2.inv()).log()
+                P1 = SE3(self.pg.poses_[self.n-1])
+                P2 = SE3(self.pg.poses_[self.n-2])
+
+                # To deal with varying camera hz
+                *_, a,b,c = [1]*3 + self.tlist
+                fac = (c-b) / (b-a)
+
+                xi = self.cfg.MOTION_DAMPING * fac * (P1 * P2.inv()).log()
                 tvec_qvec = (SE3.exp(xi) * P1).data
-                self.poses_[self.n] = tvec_qvec
+                self.pg.poses_[self.n] = tvec_qvec
             else:
                 tvec_qvec = self.poses[self.n-1]
-                self.poses_[self.n] = tvec_qvec
+                self.pg.poses_[self.n] = tvec_qvec
 
         # TODO better depth initialization
         patches[:,:,2] = torch.rand_like(patches[:,:,2,0,0,None,None])
         if self.is_initialized:
-            s = torch.median(self.patches_[self.n-3:self.n,:,2])
+            s = torch.median(self.pg.patches_[self.n-3:self.n,:,2])
             patches[:,:,2] = s
 
-        self.patches_[self.n] = patches
+        self.pg.patches_[self.n] = patches
 
         ### update network attributes ###
-        self.imap_[self.n % self.mem] = imap.squeeze()
-        self.gmap_[self.n % self.mem] = gmap.squeeze()
+        self.imap_[self.n % self.pmem] = imap.squeeze()
+        self.gmap_[self.n % self.pmem] = gmap.squeeze()
         self.fmap1_[:, self.n % self.mem] = F.avg_pool2d(fmap[0], 1, 1)
         self.fmap2_[:, self.n % self.mem] = F.avg_pool2d(fmap[0], 4, 4)
 
         self.counter += 1        
         if self.n > 0 and not self.is_initialized:
             if self.motion_probe() < 2.0:
-                self.delta[self.counter - 1] = (self.counter - 2, Id[0])
+                self.pg.delta[self.counter - 1] = (self.counter - 2, Id[0])
                 return
 
         self.n += 1
         self.m += self.M
 
-        # relative pose
+        if self.cfg.LOOP_CLOSURE:
+            if self.n - self.last_global_ba >= self.cfg.GLOBAL_OPT_FREQ:
+                """ Add loop closure factors """
+                lii, ljj = self.pg.edges_loop()
+                if lii.numel() > 0:
+                    self.last_global_ba = self.n
+                    self.append_factors(lii, ljj)
+
+        # Add forward and backward factors
         self.append_factors(*self.__edges_forw())
         self.append_factors(*self.__edges_back())
 
         if self.n == 8 and not self.is_initialized:
-            self.is_initialized = True            
+            self.is_initialized = True
 
             for itr in range(12):
                 self.update()
-        
+
         elif self.is_initialized:
             self.update()
             self.keyframe()
 
-            
-
-
-
-
-
+        if self.cfg.CLASSIC_LOOP_CLOSURE:
+            self.long_term_lc.attempt_loop_closure(self.n)
+            self.long_term_lc.lc_callback()
