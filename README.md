@@ -7,6 +7,8 @@ Zachary Teed<sup>\*</sup>, Lahav Lipson<sup>\*</sup>, Jia Deng <sub></sub><br/>
 Lahav Lipson, Zachary Teed, Jia Deng<br/>
 <a target="_blank" href="https://colab.research.google.com/drive/1DRI1aHllMY5JO3oSW7HnytuEmasjokde?usp=sharing">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
+</a><a target="_blank" href="https://github.com/princeton-vl/DPVO_Docker">
+  <img src="https://img.shields.io/badge/Docker-grey?logo=Docker" alt="Open In Colab"/>
 </a>
 
 [<img src="https://i.imgur.com/6ZQPbR1.png?1" width="600">](https://www.youtube.com/watch?v=e5wanf71YFs)
@@ -29,7 +31,6 @@ Lahav Lipson, Zachary Teed, Jia Deng<br/>
 ```
 ## Setup and Installation
 The code was tested on Ubuntu 20/22 and Cuda 11/12.</br>
-**Update 9/12:** We have [an official Docker](https://github.com/princeton-vl/DPVO_Docker)
 
 Clone the repo
 ```
