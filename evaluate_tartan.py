@@ -112,7 +112,7 @@ def evaluate(config, net, split="validation", trials=1, plot=False, save=False):
                 timestamps=tstamps)
 
             # do evaluation
-            ate_score = ate(traj_ref, traj_est, tstamps)
+            ate_score = ate(traj_ref, traj_est)
             all_results.append(ate_score)
             results[scene].append(ate_score)
 
@@ -190,7 +190,7 @@ if __name__ == '__main__':
             timestamps=tstamps)
 
         # do evaluation
-        print(ate(traj_ref, traj_est, tstamps))
+        print(ate(traj_ref, traj_est))
 
     else:
         results = evaluate(cfg, args.weights, split=args.split, trials=args.trials, plot=args.plot, save=args.save_trajectory)

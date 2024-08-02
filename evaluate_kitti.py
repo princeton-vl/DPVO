@@ -43,7 +43,6 @@ def read_calib_file(filepath):
 def kitti_image_stream(queue, kittidir, sequence, stride, skip=0):
     """ image generator """
     images_dir = kittidir / "dataset" / "sequences" / sequence
-    print(images_dir)
     image_list = sorted((images_dir / "image_2").glob("*.png"))[skip::stride]
 
     calib = read_calib_file(images_dir / "calib.txt")
@@ -126,7 +125,6 @@ if __name__ == '__main__':
 
         scene_results = []
         for trial_num in range(args.trials):
-            print(f"Trial={trial_num}")
             traj_est, timestamps = run(cfg, args.network, args.kittidir, scene, args.stride, args.viz, args.show_img)
 
             traj_est = PoseTrajectory3D(
