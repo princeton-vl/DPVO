@@ -7,7 +7,7 @@ channels:
   - defaults
 dependencies:
   - pip
-  - python=3.11
+  - python=3.10
   - pytorch=2.3.1
   - pytorch-scatter=2.1.2
   - pytorch-cuda=12.1

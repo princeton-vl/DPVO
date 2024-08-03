@@ -53,6 +53,7 @@ def video_stream(queue, imagedir, calib, stride, skip=0):
     K[1,1] = fy
     K[1,2] = cy
 
+    assert os.path.exists(imagedir), imagedir
     cap = cv2.VideoCapture(imagedir)
 
     t = 0
