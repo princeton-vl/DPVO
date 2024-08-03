@@ -5,7 +5,7 @@ This repository contains the source code for our papers:
 Zachary Teed<sup>\*</sup>, Lahav Lipson<sup>\*</sup>, Jia Deng <sub></sub><br/>
 [Deep Patch Visual SLAM](https://arxiv.org/pdf/2208.04726.pdf)<br/>
 Lahav Lipson, Zachary Teed, Jia Deng<br/>
-<a target="_blank" href="https://colab.research.google.com/drive/1DRI1aHllMY5JO3oSW7HnytuEmasjokde?usp=sharing">
+<a target="_blank" href="https://colab.research.google.com/drive/1VSFGNB7YCveqKF7XNz4RlV9EnfQA3fhQ?usp=sharing">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a><a target="_blank" href="https://github.com/princeton-vl/DPVO_Docker">
   <img src="https://img.shields.io/badge/Docker-grey?logo=Docker" alt="Open In Colab"/>
