@@ -1,4 +1,4 @@
-# Deep Patch Visual Odometry
+# Deep Patch Visual Odometry/SLAM
 This repository contains the source code for our papers:
 
 [Deep Patch Visual Odometry](https://arxiv.org/pdf/2208.04726.pdf)<br/>
