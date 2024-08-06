@@ -3,7 +3,7 @@ This repository contains the source code for our papers:
 
 [Deep Patch Visual Odometry](https://arxiv.org/pdf/2208.04726.pdf)<br/>
 Zachary Teed<sup>\*</sup>, Lahav Lipson<sup>\*</sup>, Jia Deng <sub></sub><br/>
-[Deep Patch Visual SLAM](https://arxiv.org/pdf/2208.04726.pdf)<br/>
+[Deep Patch Visual SLAM](http://arxiv.org/pdf/2408.01654)<br/>
 Lahav Lipson, Zachary Teed, Jia Deng<br/>
 <a target="_blank" href="https://colab.research.google.com/drive/1VSFGNB7YCveqKF7XNz4RlV9EnfQA3fhQ?usp=sharing">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
