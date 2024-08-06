@@ -19,6 +19,7 @@ def image_stream(queue, imagedir, calib, stride, skip=0):
 
     img_exts = ["*.png", "*.jpeg", "*.jpg"]
     image_list = sorted(chain.from_iterable(Path(imagedir).glob(e) for e in img_exts))[skip::stride]
+    assert os.path.exists(imagedir), imagedir
 
     for t, imfile in enumerate(image_list):
         image = cv2.imread(str(imfile))
@@ -52,6 +53,7 @@ def video_stream(queue, imagedir, calib, stride, skip=0):
     K[1,1] = fy
     K[1,2] = cy
 
+    assert os.path.exists(imagedir), imagedir
     cap = cv2.VideoCapture(imagedir)
 
     t = 0

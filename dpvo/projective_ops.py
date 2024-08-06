@@ -79,12 +79,21 @@ def transform(poses, patches, intrinsics, ii, jj, kk, depth=False, valid=False, 
         d = torch.zeros_like(Z)
         d[Z.abs() > 0.2] = 1.0 / Z[Z.abs() > 0.2]
 
-        Ja = torch.stack([
-            H,  o,  o,  o,  Z, -Y,
-            o,  H,  o, -Z,  o,  X, 
-            o,  o,  H,  Y, -X,  o,
-            o,  o,  o,  o,  o,  o,
-        ], dim=-1).view(1, len(ii), 4, 6)
+        if isinstance(Gij, SE3):
+            Ja = torch.stack([
+                H,  o,  o,  o,  Z, -Y,
+                o,  H,  o, -Z,  o,  X,
+                o,  o,  H,  Y, -X,  o,
+                o,  o,  o,  o,  o,  o,
+            ], dim=-1).view(1, len(ii), 4, 6)
+
+        elif isinstance(Gij, Sim3):
+            Ja = torch.stack([
+                H,  o,  o,  o,  Z, -Y,  X,
+                o,  H,  o, -Z,  o,  X,  Y,
+                o,  o,  H,  Y, -X,  o,  Z,
+                o,  o,  o,  o,  o,  o,  o,
+            ], dim=-1).view(1, len(ii), 4, 7)
         
         Jp = torch.stack([
              fx*d,     o, -fx*X*d*d,  o,
@@ -112,10 +121,10 @@ def flow_mag(poses, patches, intrinsics, ii, jj, kk, beta=0.3):
     """ projective transform """
 
     coords0 = transform(poses, patches, intrinsics, ii, ii, kk)
-    coords1 = transform(poses, patches, intrinsics, ii, jj, kk, tonly=False)
+    coords1, val = transform(poses, patches, intrinsics, ii, jj, kk, tonly=False, valid=True)
     coords2 = transform(poses, patches, intrinsics, ii, jj, kk, tonly=True)
 
     flow1 = (coords1 - coords0).norm(dim=-1)
     flow2 = (coords2 - coords0).norm(dim=-1)
 
-    return beta * flow1 + (1-beta) * flow2
+    return beta * flow1 + (1-beta) * flow2, (val > 0.5)

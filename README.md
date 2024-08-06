@@ -1,24 +1,36 @@
 # Deep Patch Visual Odometry
-This repository contains the source code for our paper:
+This repository contains the source code for our papers:
 
 [Deep Patch Visual Odometry](https://arxiv.org/pdf/2208.04726.pdf)<br/>
-Zachary Teed, Lahav Lipson, Jia Deng<br/>
+Zachary Teed<sup>\*</sup>, Lahav Lipson<sup>\*</sup>, Jia Deng <sub></sub><br/>
+[Deep Patch Visual SLAM](http://arxiv.org/pdf/2408.01654)<br/>
+Lahav Lipson, Zachary Teed, Jia Deng<br/>
+<a target="_blank" href="https://colab.research.google.com/drive/1VSFGNB7YCveqKF7XNz4RlV9EnfQA3fhQ?usp=sharing">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
+</a><a target="_blank" href="https://github.com/princeton-vl/DPVO_Docker">
+  <img src="https://img.shields.io/badge/Docker-grey?logo=Docker" alt="Open In Colab"/>
+</a>
 
 [<img src="https://i.imgur.com/6ZQPbR1.png?1" width="600">](https://www.youtube.com/watch?v=e5wanf71YFs)
 
 ```
 @article{teed2023deep,
-  title={Deep Patch Visual Odometry},
-  author={Teed, Zachary and Lipson, Lahav and Deng, Jia},
-  journal={Advances in Neural Information Processing Systems},
-  year={2023}
+   title={Deep Patch Visual Odometry},
+   author={Teed, Zachary and Lipson, Lahav and Deng, Jia},
+   journal={Advances in Neural Information Processing Systems},
+   year={2023}
+ }
+```
+```
+@inproceedings{lipson2024deep,
+    author={Lipson, Lahav and Teed, Zachary and Deng, Jia},
+    title={{Deep Patch Visual SLAM}},
+    booktitle={European Conference on Computer Vision},
+    year={2024}
 }
 ```
-##  [<img src="https://i.imgur.com/QCojoJk.png" width="40"> You can run DPVO in Google Colab](https://colab.research.google.com/drive/1DRI1aHllMY5JO3oSW7HnytuEmasjokde?usp=sharing)
-
 ## Setup and Installation
-The code was tested on Ubuntu 20 and Cuda 11.</br>
-**Update 9/12:** We have [an official Docker](https://github.com/princeton-vl/DPVO_Docker)
+The code was tested on Ubuntu 20/22 and Cuda 11/12.</br>
 
 Clone the repo
 ```
@@ -64,8 +76,31 @@ pip install ./DPViewer
 
 For installation issues, our [Docker Image](https://github.com/princeton-vl/DPVO_Docker) supports the visualizer.
 
+### Classical Backend (optional)
+
+We provide a classical backend for closing very large loops, which requires extra installation.
+
+Step 1. Install the OpenCV C++ API. On Ubuntu, you can use
+```bash
+sudo apt-get install -y libopencv-dev
+```
+Step 2. Install DBoW2
+```bash
+cd DBoW2
+mkdir -p build && cd build
+cmake .. # tested with cmake 3.22.1 and gcc/cc 11.4.0 on Ubuntu
+make # tested with GNU Make 4.3
+sudo make install
+cd ../..
+```
+
+Step 3. Install the image retrieval
+```bash
+pip install ./DPRetrieval
+```
+
 ## Demos
-DPVO can be run on any video or image directory with a single command. Note you will need to have installed DPViewer to visualize the reconstructions. The pretrained models can be downloaded from google drive [models.zip](https://drive.google.com/file/d/1dRqftpImtHbbIPNBIseCv9EvrlHEnjhX/view?usp=sharing) if you have not already run the download script.
+DPVO can be run on any video or image directory with a single command. Note you will need to have installed DPViewer to visualize the reconstructions in real-time. You can also save the completed reconstructions and view them in COLMAP. The pretrained models can be downloaded from google drive [models.zip](https://drive.google.com/file/d/1dRqftpImtHbbIPNBIseCv9EvrlHEnjhX/view?usp=sharing) if you have not already run the download script. 
 
 
 ```bash
@@ -74,8 +109,9 @@ python demo.py \
     --calib=<path to calibration file> \
     --viz # enable visualization
     --plot # save trajectory plot
-    --save_reconstruction # save point cloud as a .ply file
+    --save_ply # save point cloud as a .ply file
     --save_trajectory # save the predicted trajectory as .txt in TUM format
+    --save_colmap # save point cloud + trajectory in the standard COLMAP text format
 ```
 
 ### iPhone
@@ -93,6 +129,18 @@ python demo.py --imagedir=<path to image_left> --calib=calib/tartan.txt --stride
 Download a sequence from [EuRoC](https://projects.asl.ethz.ch/datasets/doku.php?id=kmavvisualinertialdatasets) (download ASL format)
 ```bash
 python demo.py --imagedir=<path to mav0/cam0/data/> --calib=calib/euroc.txt --stride=2 --plot --viz
+```
+
+## SLAM Backends
+To run DPVO with a SLAM backend (i.e., DPV-SLAM), add
+```bash
+--opts LOOP_CLOSURE True
+```
+to any `evaluate_X.py` script or to `demo.py`
+
+If installed, the classical backend can also be enabled using 
+```
+--opts CLASSIC_LOOP_CLOSURE True
 ```
 
 ## Evaluation
@@ -119,6 +167,11 @@ python evaluate_tum.py --trials=5 --plot --save_trajectory
 python evaluate_icl_nuim.py --trials=5 --plot --save_trajectory
 ```
 
+### KITTI:
+```
+python evaluate_kitti.py --trials=5 --plot --save_trajectory
+```
+
 ## Training
 Make sure you have run `./download_models_and_data.sh`. Your directory structure should look as follows
 
@@ -139,9 +192,10 @@ python train.py --steps=240000 --lr=0.00008 --name=<your name>
 ```
 
 ## Change Log
-* **Aug 08, 2022**: Initial release
-* **Sep 12, 2022**: Add link to docker
-* **Mar 04, 2023**: Google Colab, TUM + ICL-NUIM evaluation code, flags for saving output
+* **Aug 2022**: Initial release
+* **Sep 2022**: Add link to docker
+* **Mar 2023**: Google Colab, TUM + ICL-NUIM evaluation code, flags for saving output
+* **July 2024**: Add DPV-SLAM. Update output-saving utilities.
 
 
 ## Acknowledgements

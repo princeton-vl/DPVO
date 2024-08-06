@@ -1,18 +1,22 @@
-import cv2
+import datetime
 import glob
 import os
-import datetime
-import numpy as np
 import os.path as osp
 from pathlib import Path
 
+import cv2
+import evo.main_ape as main_ape
+import numpy as np
 import torch
-from dpvo.dpvo import DPVO
-from dpvo.utils import Timer
-from dpvo.config import cfg
+from evo.core.metrics import PoseRelation
+from evo.core.trajectory import PoseTrajectory3D
+from evo.tools import file_interface
 
+from dpvo.config import cfg
 from dpvo.data_readers.tartan import test_split as val_split
-from dpvo.plot_utils import plot_trajectory, save_trajectory_tum_format
+from dpvo.dpvo import DPVO
+from dpvo.plot_utils import plot_trajectory
+from dpvo.utils import Timer
 
 test_split = \
     ["MH%03d"%i for i in range(8)] + \
@@ -40,37 +44,22 @@ def video_iterator(imagedir, ext=".png", preload=True):
         yield image.cuda(), intrinsics.cuda()
 
 @torch.no_grad()
-def run(imagedir, cfg, network, viz=False):
+def run(imagedir, cfg, network, viz=False, show_img=False):
     slam = DPVO(cfg, network, ht=480, wd=640, viz=viz)
 
     for t, (image, intrinsics) in enumerate(video_iterator(imagedir)):
-        if viz: 
+        if show_img:
             show_image(image, 1)
         
         with Timer("SLAM", enabled=False):
             slam(t, image, intrinsics)
 
-    for _ in range(12):
-        slam.update()
-
     return slam.terminate()
 
 
-def ate(traj_ref, traj_est, timestamps):
-    import evo
-    import evo.main_ape as main_ape
-    from evo.core.trajectory import PoseTrajectory3D
-    from evo.core.metrics import PoseRelation
-
-    traj_est = PoseTrajectory3D(
-        positions_xyz=traj_est[:,:3],
-        orientations_quat_wxyz=traj_est[:,3:],
-        timestamps=timestamps)
-
-    traj_ref = PoseTrajectory3D(
-        positions_xyz=traj_ref[:,:3],
-        orientations_quat_wxyz=traj_ref[:,3:],
-        timestamps=timestamps)
+def ate(traj_ref, traj_est):
+    assert isinstance(traj_ref, PoseTrajectory3D)
+    assert isinstance(traj_est, PoseTrajectory3D)
     
     result = main_ape.ape(traj_ref, traj_est, est_name='traj', 
         pose_relation=PoseRelation.translation_part, align=True, correct_scale=True)
@@ -107,25 +96,35 @@ def evaluate(config, net, split="validation", trials=1, plot=False, save=False):
                 traj_ref = osp.join("datasets/TartanAir", scene, "pose_left.txt")
 
             # run the slam system
-            traj_est, tstamps = run(scene_path, config, net)
+            traj_est, tstamps = run(scene_path, config, net, viz=False, show_img=False)
 
             PERM = [1, 2, 0, 4, 5, 3, 6] # ned -> xyz
             traj_ref = np.loadtxt(traj_ref, delimiter=" ")[::STRIDE, PERM]
 
+            traj_est = PoseTrajectory3D(
+                positions_xyz=traj_est[:,:3],
+                orientations_quat_wxyz=traj_est[:, [6, 3, 4, 5]],
+                timestamps=tstamps)
+
+            traj_ref = PoseTrajectory3D(
+                positions_xyz=traj_ref[:,:3],
+                orientations_quat_wxyz=traj_ref[:,3:],
+                timestamps=tstamps)
+
             # do evaluation
-            ate_score = ate(traj_ref, traj_est, tstamps)
+            ate_score = ate(traj_ref, traj_est)
             all_results.append(ate_score)
             results[scene].append(ate_score)
 
             if plot:
-                scene_name = '_'.join(scene.split('/')[1:]).title()
+                scene_name = '_'.join(scene.split('/')[1:]).title() if split == 'validation' else scene
                 Path("trajectory_plots").mkdir(exist_ok=True)
-                plot_trajectory((traj_est, tstamps), (traj_ref, tstamps), f"TartanAir {scene_name.replace('_', ' ')} Trial #{j+1} (ATE: {ate_score:.03f})",
+                plot_trajectory(traj_est, traj_ref, f"TartanAir {scene_name.replace('_', ' ')} Trial #{j+1} (ATE: {ate_score:.03f})",
                                 f"trajectory_plots/TartanAir_{scene_name}_Trial{j+1:02d}.pdf", align=True, correct_scale=True)
 
             if save:
                 Path("saved_trajectories").mkdir(exist_ok=True)
-                save_trajectory_tum_format((traj_est, tstamps), f"saved_trajectories/TartanAir_{scene_name}_Trial{j+1:02d}.txt")
+                file_interface.write_tum_trajectory_file(f"saved_trajectories/TartanAir_{scene_name}_Trial{j+1:02d}.txt", traj_est)
 
         print(scene, sorted(results[scene]))
 
@@ -152,16 +151,21 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--viz', action="store_true")
+    parser.add_argument('--show_img', action="store_true")
     parser.add_argument('--id', type=int, default=-1)
     parser.add_argument('--weights', default="dpvo.pth")
     parser.add_argument('--config', default="config/default.yaml")
     parser.add_argument('--split', default="validation")
     parser.add_argument('--trials', type=int, default=1)
+    parser.add_argument('--backend_thresh', type=float, default=18.0)
     parser.add_argument('--plot', action="store_true")
+    parser.add_argument('--opts', nargs='+', default=[])
     parser.add_argument('--save_trajectory', action="store_true")
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
+    cfg.BACKEND_THRESH = args.backend_thresh
+    cfg.merge_from_list(args.opts)
 
     print("Running with config...")
     print(cfg)
@@ -170,13 +174,23 @@ if __name__ == '__main__':
 
     if args.id >= 0:
         scene_path = os.path.join("datasets/mono", test_split[args.id])
-        traj_est, tstamps = run(scene_path, cfg, args.weights, viz=args.viz)
+        traj_est, tstamps = run(scene_path, cfg, args.weights, viz=args.viz, show_img=args.show_img)
 
         traj_ref = osp.join("datasets/mono", "mono_gt", test_split[args.id] + ".txt")
         traj_ref = np.loadtxt(traj_ref, delimiter=" ")[::STRIDE,[1, 2, 0, 4, 5, 3, 6]]
 
+        traj_est = PoseTrajectory3D(
+            positions_xyz=traj_est[:,:3],
+            orientations_quat_wxyz=traj_est[:, [6, 3, 4, 5]],
+            timestamps=tstamps)
+
+        traj_ref = PoseTrajectory3D(
+            positions_xyz=traj_ref[:,:3],
+            orientations_quat_wxyz=traj_ref[:,3:],
+            timestamps=tstamps)
+
         # do evaluation
-        print(ate(traj_ref, traj_est, tstamps))
+        print(ate(traj_ref, traj_est))
 
     else:
         results = evaluate(cfg, args.weights, split=args.split, trials=args.trials, plot=args.plot, save=args.save_trajectory)

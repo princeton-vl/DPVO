@@ -1,34 +1,20 @@
-import cv2
-import numpy as np
-import glob
-import os.path as osp
-import os
 import sys
-import time
+from multiprocessing import Process, Queue
 from pathlib import Path
 
-import datetime
-from tqdm import tqdm
-
-from dpvo.utils import Timer
-from dpvo.dpvo import DPVO
-from dpvo.config import cfg
-from dpvo.lietorch import SE3
-import matplotlib.pyplot as plt
-from imageio.v3 import imwrite
-import torch
-from multiprocessing import Process, Queue
-
-### evo evaluation library ###
-import evo
-from evo.core.trajectory import PoseTrajectory3D
-from evo.tools import file_interface
-from evo.core import sync
+import cv2
 import evo.main_ape as main_ape
+import numpy as np
+import torch
+from evo.core import sync
 from evo.core.metrics import PoseRelation
-from evo.tools import plot
-from dpvo.plot_utils import plot_trajectory, save_trajectory_tum_format
+from evo.core.trajectory import PoseTrajectory3D
+from evo.tools import file_interface, plot
 
+from dpvo.config import cfg
+from dpvo.dpvo import DPVO
+from dpvo.plot_utils import plot_trajectory
+from dpvo.utils import Timer
 
 SKIP = 0
 
@@ -51,14 +37,9 @@ def tum_image_stream(queue, scene_dir, sequence, stride, skip=0):
     for imfile in image_list:
         image = cv2.imread(str(imfile))
         image = cv2.undistort(image, K_l, d_l)
-        image = cv2.resize(image, (320+32, 240+16))
         image = image.transpose(2,0,1)
 
         intrinsics = np.asarray([fx, fy, cx, cy])
-        intrinsics[0] *= image.shape[2] / 640.0
-        intrinsics[1] *= image.shape[1] / 480.0
-        intrinsics[2] *= image.shape[2] / 640.0
-        intrinsics[3] *= image.shape[1] / 480.0
 
         # crop image to remove distortion boundary
         intrinsics[2] -= 16
@@ -71,7 +52,7 @@ def tum_image_stream(queue, scene_dir, sequence, stride, skip=0):
     queue.put((-1, image, intrinsics))
 
 @torch.no_grad()
-def run(cfg, network, scene_dir, sequence, stride=1, viz=False):
+def run(cfg, network, scene_dir, sequence, stride=1, viz=False, show_img=False):
 
     slam = None
 
@@ -86,20 +67,16 @@ def run(cfg, network, scene_dir, sequence, stride=1, viz=False):
         images = torch.as_tensor(images, device='cuda')
         intrinsics = torch.as_tensor(intrinsics, dtype=torch.float, device='cuda')
 
-        if viz:
+        if show_img:
             show_image(images[0], 1)
 
         if slam is None:
-            cam_poses = torch.as_tensor([-0.25, 0., 0., 0., 0., 0., 1.], dtype=torch.float, device='cuda')
             slam = DPVO(cfg, network, ht=images.shape[-2], wd=images.shape[-1], viz=viz)
 
         intrinsics = intrinsics.cuda()
 
         with Timer("SLAM", enabled=False):
             slam(t, images, intrinsics)
-
-    for _ in range(12):
-        slam.update()
 
     reader.join()
 
@@ -114,48 +91,51 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--network', type=str, default='dpvo.pth')
     parser.add_argument('--config', default="config/default.yaml")
-    parser.add_argument('--stride', type=int, default=2)
+    parser.add_argument('--stride', type=int, default=1)
     parser.add_argument('--viz', action="store_true")
+    parser.add_argument('--show_img', action="store_true")
     parser.add_argument('--trials', type=int, default=1)
     parser.add_argument('--tumdir', type=Path, default="datasets/TUM_RGBD")
+    parser.add_argument('--backend_thresh', type=float, default=64.0)
     parser.add_argument('--plot', action="store_true")
+    parser.add_argument('--opts', nargs='+', default=[])
     parser.add_argument('--save_trajectory', action="store_true")
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
+    cfg.BACKEND_THRESH = args.backend_thresh
+    cfg.merge_from_list(args.opts)
 
     print("\nRunning with config...")
     print(cfg, "\n")
 
-    main_seed = int(time.time())
-    print(f"main_seed: {main_seed}")
-    torch.manual_seed(main_seed)
+    torch.manual_seed(1234)
 
     tum_scenes = [
-        "360",
-        "desk",
-        "desk2",
-        "floor",
-        "plant",
-        "room",
-        "rpy",
-        "teddy",
-        "xyz",
+        "rgbd_dataset_freiburg1_360",
+        "rgbd_dataset_freiburg1_desk",
+        "rgbd_dataset_freiburg1_desk2",
+        "rgbd_dataset_freiburg1_floor",
+        "rgbd_dataset_freiburg1_plant",
+        "rgbd_dataset_freiburg1_room",
+        "rgbd_dataset_freiburg1_rpy",
+        "rgbd_dataset_freiburg1_teddy",
+        "rgbd_dataset_freiburg1_xyz",
     ]
 
     results = {}
     for scene in tum_scenes:
-        scene_dir = args.tumdir / "frieburg1" / f"rgbd_dataset_freiburg1_{scene}"
-        groundtruth = scene_dir / "groundtruth.txt"#"dataset" / "poses" / f"{scene}.txt"
+        scene_dir = args.tumdir / f"{scene}"
+        groundtruth = scene_dir / "groundtruth.txt"
         traj_ref = file_interface.read_tum_trajectory_file(groundtruth)
 
         scene_results = []
         for trial_num in range(args.trials):
-            traj_est, timestamps = run(cfg, args.network, scene_dir, scene, args.stride, args.viz)
+            traj_est, timestamps = run(cfg, args.network, scene_dir, scene, args.stride, args.viz, args.show_img)
 
             traj_est = PoseTrajectory3D(
                 positions_xyz=traj_est[:,:3],
-                orientations_quat_wxyz=traj_est[:,3:],
+                orientations_quat_wxyz=traj_est[:, [6, 3, 4, 5]],
                 timestamps=timestamps)
 
             traj_ref, traj_est = sync.associate_trajectories(traj_ref, traj_est)
@@ -171,7 +151,7 @@ if __name__ == '__main__':
 
             if args.save_trajectory:
                 Path("saved_trajectories").mkdir(exist_ok=True)
-                save_trajectory_tum_format(traj_est, f"saved_trajectories/TUM_RGBD_{scene}_Trial{trial_num+1:02d}.txt")
+                file_interface.write_tum_trajectory_file(f"saved_trajectories/TUM_RGBD_{scene}_Trial{trial_num+1:02d}.txt", traj_est)
 
             scene_results.append(ate_score)
 

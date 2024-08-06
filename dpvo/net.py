@@ -107,7 +107,7 @@ class Patchifier(nn.Module):
         g = F.avg_pool2d(g, 4, 4)
         return g
 
-    def forward(self, images, patches_per_image=80, disps=None, gradient_bias=False, return_color=False):
+    def forward(self, images, patches_per_image=80, disps=None, centroid_sel_strat='RANDOM', return_color=False):
         """ extract patches from input images """
         fmap = self.fnet(images) / 4.0
         imap = self.inet(images) / 4.0
@@ -116,7 +116,7 @@ class Patchifier(nn.Module):
         P = self.patch_size
 
         # bias patch selection towards regions with high gradient
-        if gradient_bias:
+        if centroid_sel_strat == 'GRADIENT_BIAS':
             g = self.__image_gradient(images)
             x = torch.randint(1, w-1, size=[n, 3*patches_per_image], device="cuda")
             y = torch.randint(1, h-1, size=[n, 3*patches_per_image], device="cuda")
@@ -128,10 +128,13 @@ class Patchifier(nn.Module):
             x = torch.gather(x, 1, ix[:, -patches_per_image:])
             y = torch.gather(y, 1, ix[:, -patches_per_image:])
 
-        else:
+        elif centroid_sel_strat == 'RANDOM':
             x = torch.randint(1, w-1, size=[n, patches_per_image], device="cuda")
             y = torch.randint(1, h-1, size=[n, patches_per_image], device="cuda")
-        
+
+        else:
+            raise NotImplementedError(f"Patch centroid selection not implemented: {centroid_sel_strat}")
+
         coords = torch.stack([x, y], dim=-1).float()
         imap = altcorr.patchify(imap[0], coords, 0).view(b, -1, DIM, 1, 1)
         gmap = altcorr.patchify(fmap[0], coords, P//2).view(b, -1, 128, P, P)
@@ -202,7 +205,7 @@ class VONet(nn.Module):
         d = patches[..., 2, p//2, p//2]
         patches = set_depth(patches, torch.rand_like(d))
 
-        kk, jj = flatmeshgrid(torch.where(ix < 8)[0], torch.arange(0,8, device="cuda"))
+        kk, jj = flatmeshgrid(torch.where(ix < 8)[0], torch.arange(0,8, device="cuda"), indexing='ij')
         ii = ix[kk]
 
         imap = imap.view(b, -1, DIM)
@@ -223,8 +226,8 @@ class VONet(nn.Module):
             n = ii.max() + 1
             if len(traj) >= 8 and n < images.shape[1]:
                 if not structure_only: Gs.data[:,n] = Gs.data[:,n-1]
-                kk1, jj1 = flatmeshgrid(torch.where(ix  < n)[0], torch.arange(n, n+1, device="cuda"))
-                kk2, jj2 = flatmeshgrid(torch.where(ix == n)[0], torch.arange(0, n+1, device="cuda"))
+                kk1, jj1 = flatmeshgrid(torch.where(ix  < n)[0], torch.arange(n, n+1, device="cuda"), indexing='ij')
+                kk2, jj2 = flatmeshgrid(torch.where(ix == n)[0], torch.arange(0, n+1, device="cuda"), indexing='ij')
 
                 ii = torch.cat([ix[kk1], ix[kk2], ii])
                 jj = torch.cat([jj1, jj2, jj])
