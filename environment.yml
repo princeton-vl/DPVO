@@ -13,6 +13,7 @@ dependencies:
   - pytorch-cuda=12.1
   - torchvision=0.18
   - pip:
+    - tensorboard
     - numba
     - tqdm
     - einops
