@@ -3,4 +3,4 @@
 	url = https://github.com/zachteed/Pangolin.git
 [submodule "DBoW2"]
 	path = DBoW2
-	url = https://github.com/princeton-vl/DBoW2.git
+	url = https://github.com/lahavlipson/DBoW2.git
