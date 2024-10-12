@@ -53,7 +53,7 @@ def save_output_for_COLMAP(name: str, traj: PoseTrajectory3D, points: np.ndarray
     (colmap_dir / "points3D.txt").write_text(points3D)
 
     # camera
-    (colmap_dir / "cameras.txt").write_text(f"1 PINHOLE {H} {W} {fx} {fy} {cx} {cy}")
+    (colmap_dir / "cameras.txt").write_text(f"1 PINHOLE {W} {H} {fx} {fy} {cx} {cy}")
     print(f"Saved COLMAP-compatible reconstruction in {colmap_dir.resolve()}")
 
 def save_ply(name: str, points: np.ndarray, colors: np.ndarray):
