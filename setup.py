@@ -1,41 +1,44 @@
 import os.path as osp
 from setuptools import setup, find_packages
-from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 ROOT = osp.dirname(osp.abspath(__file__))
 
-
-
-setup(
-    name='dpvo',
-    packages=find_packages(),
-    ext_modules=[
+def get_extensions():
+    from torch.utils.cpp_extension import CUDAExtension
+    return [
         CUDAExtension('cuda_corr',
             sources=['dpvo/altcorr/correlation.cpp', 'dpvo/altcorr/correlation_kernel.cu'],
             extra_compile_args={
-                'cxx':  ['-O3'], 
+                'cxx':  ['-O3'],
                 'nvcc': ['-O3'],
             }),
         CUDAExtension('cuda_ba',
             sources=['dpvo/fastba/ba.cpp', 'dpvo/fastba/ba_cuda.cu', 'dpvo/fastba/block_e.cu'],
             extra_compile_args={
-                'cxx':  ['-O3'], 
+                'cxx':  ['-O3'],
                 'nvcc': ['-O3'],
-            },
-            include_dirs=[
-                osp.join(ROOT, 'thirdparty/eigen-3.4.0')]
-            ),
-        CUDAExtension('lietorch_backends', 
-            include_dirs=[
-                osp.join(ROOT, 'dpvo/lietorch/include'), 
-                osp.join(ROOT, 'thirdparty/eigen-3.4.0')],
-            sources=[
-                'dpvo/lietorch/src/lietorch.cpp', 
-                'dpvo/lietorch/src/lietorch_gpu.cu',
-                'dpvo/lietorch/src/lietorch_cpu.cpp'],
-            extra_compile_args={'cxx': ['-O3'], 'nvcc': ['-O3'],}),
+            }),
+    ]
+    # return []
+
+def get_build_extension():
+    # return None
+    from torch.utils.cpp_extension import BuildExtension
+    return BuildExtension
+
+setup(
+    name='dpvo',
+    version='0.1',
+    packages=find_packages(),
+    install_requires=[
+        'torch',
+        'torchvision',
+        'torchaudio',
     ],
+    ext_modules=get_extensions(),
     cmdclass={
-        'build_ext': BuildExtension
-    })
+        'build_ext': get_build_extension()
+    },
+    )
+
 

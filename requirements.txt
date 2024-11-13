@@ -1,0 +1,28 @@
+plyfile
+argcomplete==2.0.0
+beautifulsoup4==4.11.1
+cmake==3.22.4
+colorama==0.4.5
+evo==1.18.1
+filelock==3.7.1
+gdown==4.5.1
+lz4==4.0.1
+natsort==8.1.0
+opencv-python==4.6.0.66
+pandas==1.4.3
+pygments==2.12.0
+pytz==2022.1
+pyyaml==6.0
+rosbags==0.9.11
+ruamel-yaml==0.17.21
+ruamel-yaml-clib==0.2.6
+seaborn==0.11.2
+soupsieve==2.3.2.post1
+yacs==0.1.8
+zstandard==0.18.0
+torch==2.2.0 #1.12.0
+torchvision #==0.13.0
+torchaudio #==0.12.0
+-f https://data.pyg.org/whl/torch-2.2.0+cu121.html
+torch-scatter
+matplotlib==3.5.1
