@@ -24,3 +24,26 @@ dependencies:
     - evo
     - opencv-python
     - yacs
+
+# pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+# pip install torch-scatter -f https://data.pyg.org/whl/torch-2.8.0+cu128.html
+# pip install tensorboard numba tqdm einops pypose kornia numpy plyfile evo opencv-python yacs
+
+# git clone --recursive https://github.com/princeton-vl/lietorch.git
+# cd lietorch
+
+# python3 -m venv .venv
+# source .venv/bin/activate
+
+# # install requirements
+# pip install torch torchvision torchaudio wheel
+
+# # optional: specify GPU architectures
+# export TORCH_CUDA_ARCH_LIST="7.5;8.6;8.9;9.0"
+
+# # install lietorch
+# pip install --no-build-isolation .
+
+
+# pip install --no-build-isolation .
+

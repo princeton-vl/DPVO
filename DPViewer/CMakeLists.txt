@@ -1,9 +1,16 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.12)
 
 project(dpviewer)
 project(viewer LANGUAGES CUDA CXX)
 
-add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
+# Find Python with Development component (provides python_add_library command)
+# Python_EXECUTABLE is set by setup.py via -DPython_EXECUTABLE=...
+find_package(Python 3.12 REQUIRED COMPONENTS Interpreter Development)
+message(STATUS "Using Python: ${Python_EXECUTABLE}")
+message(STATUS "Python version: ${Python_VERSION}")
+
+# Use CXX11 ABI=1 to match PyTorch 2.8.0
+add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
 
