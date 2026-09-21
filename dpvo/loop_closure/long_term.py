@@ -8,7 +8,7 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn.functional as F
 from einops import asnumpy, rearrange, repeat
-from torch_scatter import scatter_max
+from ..scatter import scatter_max
 
 from .. import fastba
 from .. import projective_ops as pops

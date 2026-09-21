@@ -4,9 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 
-import torch_scatter
-from torch_scatter import scatter_sum
-
 from . import fastba
 from . import altcorr
 from . import lietorch
@@ -270,4 +267,3 @@ class VONet(nn.Module):
             traj.append((valid, coords, coords_gt, Gs[:,:n], Ps[:,:n], kl))
 
         return traj
-

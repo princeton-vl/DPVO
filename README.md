@@ -55,6 +55,20 @@ pip install .
 ./download_models_and_data.sh
 ```
 
+### Quick Start (Ubuntu + RTX 5090 + CUDA 12.8, no viewer)
+Use the setup helper to create a fresh conda environment, install PyTorch `cu128`,
+build DPVO CUDA extensions, and run a smoke test:
+```bash
+bash scripts/setup_ubuntu_5090_cuda131.sh
+```
+
+Optional flags (via env vars):
+```bash
+ENV_NAME=dpvo5090 RUN_DEMO=1 bash scripts/setup_ubuntu_5090_cuda131.sh
+```
+
+This path does not require `torch-scatter`.
+
 
 ### Recommended - Install the Pangolin Viewer
 Note: You will need to have CUDA 11 and CuDNN installed on your system.

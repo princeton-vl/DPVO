@@ -1,18 +1,31 @@
 import cuda_ba
 import numba as nb
 import numpy as np
-import pypose as pp
 import torch
 from einops import parse_shape, rearrange
 from scipy.spatial.transform import Rotation as R
 
+try:
+    import pypose as pp
+except ModuleNotFoundError:
+    pp = None
+
+
+def _require_pypose():
+    if pp is None:
+        raise ModuleNotFoundError(
+            "No module named 'pypose'. Install pypose to enable loop-closure optimization."
+        )
+
 
 def make_pypose_Sim3(rot, t, s):
+    _require_pypose()
     q = R.from_matrix(rot).as_quat()
     data = np.concatenate([t, q, np.array(s).reshape((1,))])
     return pp.Sim3(data)
 
-def SE3_to_Sim3(x: pp.SE3):
+def SE3_to_Sim3(x):
+    _require_pypose()
     out = torch.cat((x.data, torch.ones_like(x.data[...,:1])), dim=-1)
     return pp.Sim3(out)
 
@@ -161,6 +174,7 @@ def _residual(C, Gi, Gj):
     return out.Log().tensor()
 
 def residual(Ginv, input_poses, dSloop, ii, jj, jacobian=False):
+    _require_pypose()
 
     # prep
     device = Ginv.device
